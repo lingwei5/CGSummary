@@ -51,7 +51,7 @@ Once initiated, the pipeline operates in the following order:
 6. **坐标系A到B的变换,就是B在A中的表示**.
    1. 对于旋转来说,是target坐标系的axis(或者单位轴的端点)在source坐标系下的表示,(采用列向量的表示方式)![alt text](简单旋转变换.png),
    2. 对于缩放来说,也是target坐标系的坐标轴在source坐标系下的表示,如1变成3
-   3. 对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)
+   3. 对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换
 7. 点(x,y,z,1)向量(dx,dy,dz,0)
 8.**法向量的变换不同于点的变换**,假设v n,经过变换M,得到v'=M*v;有nt*v=0-->n转置x(M逆)xMxv=0-->n转置x(M逆)xv'=0,又n'转置xv'=0
    所以n'转置=n转置x(M逆)-->n'=(M逆的转置)xn
