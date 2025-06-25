@@ -53,15 +53,31 @@ Once initiated, the pipeline operates in the following order:
    2. 对于缩放来说,也是target坐标系的坐标轴在source坐标系下的表示,如1变成3
    3. 对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换
 7. 点(x,y,z,1)向量(dx,dy,dz,0)
-8.**法向量的变换不同于点的变换**,假设v n,经过变换M,得到v'=M*v;有nt*v=0-->n转置x(M逆)xMxv=0-->n转置x(M逆)xv'=0,又n'转置xv'=0
+8. 旋转是绕当前坐标系的原点进行的(因为是绕某个向量旋转，这个向量一定是从当前坐标系的原点出发的),如果想要绕某个点进行旋转,可以先平移到该点(或者说叫当前坐标系的原点移动到该点，也叫translate this point to origin，vtk的注释,得到新的坐标系),旋转后再平移回来,这就是vtk azimuth elevation的代码原理
+9. **法向量的变换不同于点的变换**,假设v n,经过变换M,得到v'=M*v;有nt*v=0-->n转置x(M逆)xMxv=0-->n转置x(M逆)xv'=0,又n'转置xv'=0
    所以n'转置=n转置x(M逆)-->n'=(M逆的转置)xn
-9.  投影矩阵![alt text](投影矩阵.png) 正交投影就是一个视景体的线性映射变换(缩放+平移), 透视投影推导见http://www.songho.ca/opengl/gl_projectionmatrix.html  
-10. glDepthRange指定近/远裁剪面
-11. 管线中矩阵变换多次都是由缩放+平移组成,比如投影矩阵 NDC变换 视口变换等,是有一个统一的公式的.
+10. 投影矩阵![alt text](投影矩阵.png) 正交投影就是一个视景体的线性映射变换(缩放+平移), 透视投影推导见http://www.songho.ca/opengl/gl_projectionmatrix.html  
+11. glDepthRange指定近/远裁剪面
+12. 管线中矩阵变换多次都是由缩放+平移组成,比如投影矩阵 NDC变换 视口变换等,是有一个统一的公式的.
     
 		缩放前坐标范围Xmin Xmax,缩放平移后坐标范围xmin xmax,求缩放前X坐标对应的缩放平移坐标x
 		len = xmax-xmin;Len=Xmax-Xmin;L=X-Xmin;缩放前后点到起始坐标Xmin的距离占整体的比例不变,是L/Len--->映射到新坐标系后距离新起点的距离l=L/Len *len--->新坐标系下的坐标x=l*(xmax-xmin)+xmin
-
+13. glTranslate glRotate glScale等函数,都是针对当前坐标系进行的变换
+14. glOrhto是设置正交投影矩阵，glFrustum是设置透视投影矩阵,glOrtho的参数是left right bottom top near far,glFrustum的参数是left right bottom top near far
+    gluPerspective是设置透视投影矩阵,参数是fovy aspect near far,fovy是视景体竖直方向上的张角,aspect是视景体宽高比,near far是视景体近远裁剪面
+15. 透视投影是on-axis projection, off-axis projection用于VR场景, 屏幕也作为一个模型放置在场景中
+    1.  有屏幕的pa pb pc以及眼镜的pe，都是世界坐标
+    2.  得到屏幕的模型空间的坐标系vr=pb-pa vu=pc-pb vn=vr叉vu
+    3.  眼睛沿vn反向与屏幕模型的交点，作为屏幕模型坐标系的原点，得到新的坐标系<每个eye-screen对都有自己的原点>,d是眼睛到屏幕的距离
+    4.  va = pe - pa, vb = pe - pb, vc = pe - pc,得到眼睛到屏幕模型角点的向量
+    5.  在屏幕坐标系下得到，根据透视的相似三角形，求得近裁剪面n上的l r b t
+        1.  l = dot_product(vr, va) * n / d;
+        2.  r = dot_product(vr, vb) * n / d;
+        3.  b = dot_product(vu, va) * n / d;
+        4.  t = dot_product(vu, vc) * n / d;
+    6. glFrustum(l, r, b, t, n, f)就是屏幕坐标系下的垂直透视投影矩阵
+    7. 再glRotate变换到世界坐标系同方向的坐标系下的斜透视投影矩阵
+    8. 再glTranslate(-pe[0], -pe[1], -pe[2])变换到世界坐标系下的原点，这个有点疑问是眼睛坐标系还是世界坐标系啊？理论上应该是眼睛坐标系，因为投影是在camera下进行的
 ## 投影矩阵推导
 无论是正交投影还是透视投影,其实变换矩阵的目的都是将view坐标系下的坐标转换到NDC[-1 1]空间,这个过程分解成了投影+透视除法两步,也就产生了(xe,ye,ze,1.0)-->(xp,yp,zp,wp)-->(xn,yn,zn,1.0)三种坐标
 
