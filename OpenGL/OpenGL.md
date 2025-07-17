@@ -96,6 +96,87 @@ Once initiated, the pipeline operates in the following order:
 zn坐标的变换,已知与xe ye无关,直接第三行0 0 A B,然后映射到-1 1
 ![alt text](zn的计算.png)
 
+## VTK相关
+1. vtkTransform的pre post是指，新的变换T(vtkTransform对象)相对于当前变换M(vtkTransform对象)，是先作用于点或向量(pre)，还是后作用于点或向量(post)
+
+pre就是先执行新变换，再执行旧变换Mnew = Mold * T
+post就是先执行旧变换，再执行新变换Mnew = T * Mold
+
+vtkTransform的InternalUpdate能看出来本质
+vtkTransform::InternalUpdate()
+{
+	....
+
+  // concatenate PreTransforms
+  for (i = nPreTransforms - 1; i >= 0; i--)
+  {
+    vtkHomogeneousTransform* transform =
+      static_cast<vtkHomogeneousTransform*>(this->Concatenation->GetTransform(i));
+    vtkMatrix4x4::Multiply4x4(this->Matrix, transform->GetMatrix(), this->Matrix);
+  }
+
+  // concatenate PostTransforms
+  for (i = nPreTransforms; i < nTransforms; i++)
+  {
+    vtkHomogeneousTransform* transform =
+      static_cast<vtkHomogeneousTransform*>(this->Concatenation->GetTransform(i));
+    vtkMatrix4x4::Multiply4x4(transform->GetMatrix(), this->Matrix, this->Matrix);
+  }
+
+
+	....
+}
+
+2. vtkTransform的Concatenation有两种形式，
+   1. Concatenate(const double elements[16])，不增加vtkTranform对象，仅仅是针对当前vtkTransform对象进行vtkMatrix的乘法运算，本质是改了当前vtkTransform对象的Matrix值
+   2. Concatenate(vtkAbstractTransform* trans)，新增一个vtkTransform对象，并添加到Concatenation的list中
+3. vtkTransform默认是pre的
+4. pre1 pre2 pre3 pre4 post1 post2 post3 post4 这八个vtkTransform对象连起来就是**post4 x post3 x post2 x post1 x M x pre1 x pre2 x pre3 x pre4 x vec**
+5. 由item2可知
+    1. vtkNew<vtkTransform> transform1b;
+		transform1b->PostMultiply();
+		transform1b->Translate(10.0, 0.0, 0.0);
+		transform1b->RotateZ(40.0);
+		![alt text](先平移后旋转.png)
+	2. 上面变换等价于
+       vtkNew<vtkTransform> transform1b;
+		transform1b->PreMultiply();
+		transform1b->RotateZ(40.0);
+		transform1b->Translate(10.0, 0.0, 0.0);
+	3. 另一种变换顺序
+        vtkNew<vtkTransform> transform1b;
+		transform1b->PreMultiply();
+		transform1b->Translate(10.0, 0.0, 0.0);
+		transform1b->RotateZ(40.0);
+		![alt text](先旋转后平移.png)
+6. vtkTransform的piepline是通过SetInput连接的，这个不同于Concatenation，是改变了该vtkTransform对象初始矩阵，即八个连续变换公式中的M初始矩阵
+   vtkNew<vtkTransform> transform1b;
+  transform1b->PostMultiply();
+  transform1b->Translate(10.0, 0.0, 0.0);
+  vtkNew<vtkTransform> transform1b2;
+  // transform1b2->PostMultiply();
+  transform1b2->SetInput(transform1b);
+  transform1b2->RotateZ(40.0);
+  actor1b->SetUserTransform(transform1b2);
+   ![alt text](改变vtkTransform对象的当前坐标系.png)在平移完的坐标系基础上进行旋转,其实也没改坐标系，还是前后的顺序问题，跟OpenGL的旋转平移顺序一样
+
+	圆柱看不出来，用cow来研究
+	armTransform->Identity();//每次都在固定坐标系开始变换，注掉后则是每次在上一次的坐标系下变换
+	比如,平移这么理解没问题，旋转似乎有问题
+	armTransform->Translate(10.0, 0.0, 0.0);//先在初始坐标系下沿X轴右移10，初始坐标系C0原点右移到x=10，得到右移坐标系C1
+	armtransform->Translate(10.0, 0.0, 0.0);//再在平移后的坐标系C1下沿X轴右移10，C1的原点平移到C1中的x=10，初始坐标系原点C0右移到C0中的x=20
+	
+变换肯定是相对于上一次的坐标系,因为如果这个变换作用到点上之后，这个坐标点就变了，再接着进行其他的变换
+
+旋转在任何情况下都是绕当前坐标系原点进行的
+
+想绕物体中心点旋转，必须将物体移到当前坐标系原点，进行旋转，再平移回来
+另一种理解就是，先把坐标系原点移动到物体中心，也就是坐标系变换到物体中心，在这个坐标系下进行旋转，再把坐标系由当前在物体中心点变换回旋转之前的原点，也就是把物体移回初始位置
+
+通过在原点的cow及平移了10的cow来验证vtk的pre/post以及绕物体自身中心旋转
+
+vtk相对于OpenGL，只是多提供了一个矩阵左乘右乘的功能(OpenGL默认是pre)，数学原理及最终到opengl里的运算都没变
+
 
 ## 刚体旋转
 刚体旋转有很多等价的表示方式
