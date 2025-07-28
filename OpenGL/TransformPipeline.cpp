@@ -68,18 +68,21 @@ int main(int, char*[])
 
   vtkNew<vtkTransform> armTransform;
   // armTransform->PostMultiply();
-  //默认是PreMultiply，如果是PostMultiply，则变换的顺序是要倒过来
-  //1. 先将坐标系平移到(10,0,0)，基本上是第二个牛的原点
-  armTransform->Translate(10, 0, 0);
+  //默认是PreMultiply，如果是PostMultiply，则变换的顺序,代码的顺序是要倒过来的
+
+  //1. 先将坐标系平移到(10,0,0)，基本上是第二个牛的中心点
+  //2. 在当前坐标系下旋转90度
+  //3. 平移回变换前的坐标系进行显示
+
+  armTransform->Translate(10, 0, 0);//T1 平移回原来的位置进行显示
   // armTransform->GetMatrix()->Print(std::cout);
   auto mat = armTransform->GetMatrix();
   // armTransform->RotateY(180);
-  //2. 在当前坐标系下旋转90度
-  armTransform->RotateY(90);//
+  
+  armTransform->RotateY(90);//T2 绕当前坐标系旋转90度
   mat = armTransform->GetMatrix();
-
-  //3. 平移回变换前的坐标系进行显示
-  armTransform->Translate(-10, 0, 0);
+  
+  armTransform->Translate(-10, 0, 0);//T3,将物体移到原点，或者说变换坐标系原点到物体的几何中心
   mat = armTransform->GetMatrix();
 
   vtkNew<vtkActor> armActor2;

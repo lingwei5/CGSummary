@@ -51,7 +51,7 @@ Once initiated, the pipeline operates in the following order:
 6. **坐标系A到B的变换,就是B在A中的表示**.
    1. 对于旋转来说,是target坐标系的axis(或者单位轴的端点)在source坐标系下的表示,(采用列向量的表示方式)![alt text](简单旋转变换.png),
    2. 对于缩放来说,也是target坐标系的坐标轴在source坐标系下的表示,如1变成3
-   3. 对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换
+   3. ~~对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，变换的数学表示就是从source原点指向target原点的向量，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换~~ 某个点从原来的坐标系下的(tx,ty,tz)移动到新的坐标系下的(0,0,0),变换数学表达上是(0,0,0)=(tx,ty,tz)+T,所以T=-(tx,ty,tz),这个是肯定对的，对这个公式的理解需要继续,并不是ab ba的关系
 7. 点(x,y,z,1)向量(dx,dy,dz,0)
 8. 旋转是绕当前坐标系的原点进行的(因为是绕某个向量旋转，这个向量一定是从当前坐标系的原点出发的),如果想要绕某个点进行旋转,可以先平移到该点(或者说叫当前坐标系的原点移动到该点，也叫translate this point to origin，vtk的注释,得到新的坐标系),旋转后再平移回来,这就是vtk azimuth elevation的代码原理
 9. **法向量的变换不同于点的变换**,假设v n,经过变换M,得到v'=M*v;有nt*v=0-->n转置x(M逆)xMxv=0-->n转置x(M逆)xv'=0,又n'转置xv'=0
@@ -102,7 +102,7 @@ zn坐标的变换,已知与xe ye无关,直接第三行0 0 A B,然后映射到-1 
 pre就是先执行新变换，再执行旧变换Mnew = Mold * T
 post就是先执行旧变换，再执行新变换Mnew = T * Mold
 
-vtkTransform的InternalUpdate能看出来本质
+vtkTransform的InternalUpdate && vtkTransformConcatenation::Concatenate(const double elements[16]) 能看出来本质
 vtkTransform::InternalUpdate()
 {
 	....
@@ -173,9 +173,218 @@ vtkTransform::InternalUpdate()
 想绕物体中心点旋转，必须将物体移到当前坐标系原点，进行旋转，再平移回来
 另一种理解就是，先把坐标系原点移动到物体中心，也就是坐标系变换到物体中心，在这个坐标系下进行旋转，再把坐标系由当前在物体中心点变换回旋转之前的原点，也就是把物体移回初始位置
 
+平移A到B，变换就是从A指向B的向量
+
 通过在原点的cow及平移了10的cow来验证vtk的pre/post以及绕物体自身中心旋转
 
 vtk相对于OpenGL，只是多提供了一个矩阵左乘右乘的功能(OpenGL默认是pre)，数学原理及最终到opengl里的运算都没变
+
+## DICOM坐标系
+![alt text](<DICOM LPS右手系-患者坐标系.png>)
+![alt text](解剖学坐标系.png)
+
+- 解剖学坐标系:基于人体解剖结构的固有坐标系，连续的物理空间，描述人体结构的位置
+	三个观察位：冠 矢 轴
+	六个指向:L-R A-P S-I
+	![alt text](6*4*2种可能的解剖学坐标系.png) 常见的有LPS RAS
+
+- 患者坐标系:
+  设备相关的三维笛卡尔坐标系，与扫描设备相关，固定于患者体位，描述患者相对于设备的位置及方向,所以能看出来有些人躺斜了，头歪了等等
+
+- DICOM坐标系：
+	(0020,0032) Image Position (Patient)：图像左上角在患者坐标系中的位置,就是vtk中的Origin
+	(0020,0037) Image Orientation (Patient)：图像行/列方向的方向余弦
+	(0028,0030) Pixel Spacing：像素物理间距 vtk中的spacing
+	(0018,0050) Slice Thickness：切片厚度
+	患者坐标系:在dicom标准中使用LPS右手系的解剖学坐标作为患者坐标系
+	dicom坐标系,将患者坐标系称作参考系
+
+	DICOM坐标系可能就是图像坐标系，或者有可能是原点在患者几何中心的LPS坐标系(平移得到图像坐标系)
+	
+- 图像坐标系:连续的物理坐标，包含spacing
+	原点在图像左上角像素中心
+	单位：毫米(mm)
+	X轴：沿行方向 (从左到右)
+	Y轴：沿列方向 (从上到下)
+	Z轴：切片方向 (多切片时)
+	
+	// VTK 中的转换
+	vtkImageData* image = reader->GetOutput();
+	double origin[3]; // DICOM坐标系原点在患者坐标系中的位置
+	double spacing[3]; // 物理间距
+	image->GetOrigin(origin);
+	image->GetSpacing(spacing);
+
+	// 图像坐标 → 患者坐标
+	/*
+	这个其实不严谨，应该是患者坐标系与DICOM坐标系方向一致的情况
+	更一般的情况应该是，
+	先从图像坐标系乘上spacing得到DICOM坐标系，再乘上DICOM坐标系到患者坐标系的变换矩阵
+	也就是origin的偏移以及(0020,0037) Image Orientation (Patient)的方向余弦矩阵
+	MITK中的index2world实际应该是图像坐标到患者坐标系
+	*/
+	double patientX = origin[0] + imageX * spacing[0];
+	double patientY = origin[1] + imageY * spacing[1];
+	double patientZ = origin[2] + sliceIndex * spacing[2];
+
+- 像素坐标系:离散的ijk值 像素索引
+  	与图像坐标系关系:
+	图像坐标X = (i + 0.5) * PixelSpacingX
+	图像坐标Y = (j + 0.5) * PixelSpacingY
+- 设备坐标系:CT MR等设备的坐标系，一般没啥用，可以认为跟患者坐标系重合
+- 参考坐标系:dicom中的世界坐标系，或者说是到世界坐标系的一个中间坐标系，即解剖学坐标系/患者坐标系/设备坐标系
+
+## VTK各坐标系的变换测试
+![alt text](VTK基本坐标系变换.png)
+vtkRenderer 使用 vtkCamera里的MVP矩阵进行基本的坐标变换
+vtkCoordinate使用vtkRenderer进行更多的坐标变换,进一步拆解了OpenGL的坐标系，添加了几个中间归一化的坐标系方便在UI上做一下渲染
+
+#define VTK_DISPLAY 0
+#define VTK_NORMALIZED_DISPLAY 1
+#define VTK_VIEWPORT 2
+#define VTK_NORMALIZED_VIEWPORT 3
+#define VTK_VIEW 4
+#define VTK_POSE 5
+#define VTK_WORLD 6
+#define VTK_USERDEFINED 7
+
+* <PRE>
+ *   DISPLAY -             x-y pixel values in window
+ *      0, 0 is the lower left of the first pixel,
+ *      size, size is the upper right of the last pixel
+ *   NORMALIZED DISPLAY -  x-y (0,1) normalized values
+ *      0, 0 is the lower left of the first pixel,
+ *      1, 1 is the upper right of the last pixel
+ *   VIEWPORT -            x-y pixel values in viewport
+ *      0, 0 is the lower left of the first pixel,
+ *      size, size is the upper right of the last pixel
+ *   NORMALIZED VIEWPORT - x-y (0,1) normalized value in viewport
+ *      0, 0 is the lower left of the first pixel,
+ *      1, 1 is the upper right of the last pixel
+ *   VIEW -                x-y-z (-1,1) values in pose coordinates. (z is depth) 应该是NDC坐标
+ *   POSE -                world coords translated and rotated to the camera
+ *                         position and view direction
+ *   WORLD -               x-y-z global coordinate values
+ *   USERDEFINED -         x-y-z in User defined space
+ * </PRE>
+
+void vtkRenderer::WorldToView(double& x, double& y, double& z)
+{
+  double view[4];
+
+  // get the perspective transformation from the active camera
+  if (!this->ActiveCamera)
+  {
+    vtkErrorMacro("WorldToView: no active camera, cannot compute world to view, returning 0,0,0");
+    x = y = z = 0.0;
+    return;
+  }
+  const auto& mat = this->GetCompositeProjectionTransformationMatrix();
+
+  view[0] = x * mat[0] + y * mat[1] + z * mat[2] + mat[3];
+  view[1] = x * mat[4] + y * mat[5] + z * mat[6] + mat[7];
+  view[2] = x * mat[8] + y * mat[9] + z * mat[10] + mat[11];
+  view[3] = x * mat[12] + y * mat[13] + z * mat[14] + mat[15];
+
+//VTK里求一个屏幕坐标对应的世界坐标的时候，需要完整的坐标变换，因此透视除法也在矩阵之外单独加上了
+  if (view[3] != 0.0)
+  {
+    x = view[0] / view[3];
+    y = view[1] / view[3];
+    z = view[2] / view[3];
+  }
+}
+
+double* vtkCoordinate::GetComputedDoubleDisplayValue(vtkViewport* viewport)
+{
+  double val[3];
+
+  // prevent infinite loops
+  if (this->Computing)
+  {
+    return this->ComputedDoubleDisplayValue;
+  }
+  this->Computing = 1;
+
+  val[0] = this->Value[0];
+  val[1] = this->Value[1];
+  val[2] = this->Value[2];
+
+  // use our viewport if set
+  if (this->Viewport)
+  {
+    viewport = this->Viewport;
+  }
+
+  // if viewport is nullptr, there is very little we can do
+  if (viewport == nullptr)
+  {
+    // for DISPLAY and VIEWPORT just use the value
+    if (this->CoordinateSystem == VTK_DISPLAY)
+    {
+      this->ComputedDoubleDisplayValue[0] = val[0];
+      this->ComputedDoubleDisplayValue[1] = val[1];
+      if (this->ReferenceCoordinate)
+      {
+        double* refValue = this->ReferenceCoordinate->GetComputedDoubleDisplayValue(viewport);
+        this->ComputedDoubleDisplayValue[0] += refValue[0];
+        this->ComputedDoubleDisplayValue[1] += refValue[1];
+      }
+    }
+    else
+    {
+      this->ComputedDoubleDisplayValue[0] = static_cast<double>(VTK_INT_MAX);
+      this->ComputedDoubleDisplayValue[1] = static_cast<double>(VTK_INT_MAX);
+
+      vtkErrorMacro("Request for coordinate transformation without required viewport");
+    }
+    return this->ComputedDoubleDisplayValue;
+  }
+
+  // compute our DC
+  switch (this->CoordinateSystem)
+  {
+    case VTK_WORLD:
+      if (this->ReferenceCoordinate)
+      {
+        double* refValue = this->ReferenceCoordinate->GetComputedWorldValue(viewport);
+        val[0] += refValue[0];
+        val[1] += refValue[1];
+        val[2] += refValue[2];
+      }
+      viewport->WorldToPose(val[0], val[1], val[2]);
+      VTK_FALLTHROUGH;
+    case VTK_POSE:
+      viewport->PoseToView(val[0], val[1], val[2]);
+      VTK_FALLTHROUGH;
+    case VTK_VIEW:
+      viewport->ViewToNormalizedViewport(val[0], val[1], val[2]);
+      VTK_FALLTHROUGH;
+    case VTK_NORMALIZED_VIEWPORT:
+      viewport->NormalizedViewportToViewport(val[0], val[1]);
+      VTK_FALLTHROUGH;
+    case VTK_VIEWPORT:
+      if ((this->CoordinateSystem == VTK_NORMALIZED_VIEWPORT ||
+            this->CoordinateSystem == VTK_VIEWPORT) &&
+        this->ReferenceCoordinate)
+      {
+        double* refValue = this->ReferenceCoordinate->GetComputedDoubleViewportValue(viewport);
+        val[0] += refValue[0];
+        val[1] += refValue[1];
+      }
+      viewport->ViewportToNormalizedDisplay(val[0], val[1]);
+      VTK_FALLTHROUGH;
+    case VTK_NORMALIZED_DISPLAY:
+      viewport->NormalizedDisplayToDisplay(val[0], val[1]);
+      break;
+    case VTK_USERDEFINED:
+      this->GetComputedUserDefinedValue(viewport);
+      val[0] = this->ComputedUserDefinedValue[0];
+      val[1] = this->ComputedUserDefinedValue[1];
+      val[2] = this->ComputedUserDefinedValue[2];
+      break;
+  }
+}
 
 
 ## 刚体旋转
