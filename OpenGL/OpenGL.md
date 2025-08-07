@@ -51,7 +51,7 @@ Once initiated, the pipeline operates in the following order:
 6. **坐标系A到B的变换,就是B在A中的表示**.
    1. 对于旋转来说,是target坐标系的axis(或者单位轴的端点)在source坐标系下的表示,(采用列向量的表示方式)![alt text](简单旋转变换.png),
    2. 对于缩放来说,也是target坐标系的坐标轴在source坐标系下的表示,如1变成3
-   3. ~~对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，变换的数学表示就是从source原点指向target原点的向量，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换~~ 某个点从原来的坐标系下的(tx,ty,tz)移动到新的坐标系下的(0,0,0),变换数学表达上是(0,0,0)=(tx,ty,tz)+T,所以T=-(tx,ty,tz),这个是肯定对的，对这个公式的理解需要继续,并不是ab ba的关系
+   3. ~~对于平移来说,则是target坐标系的原点在source坐标系下的表示![alt text](平移的示意图.png)，变换的数学表示就是从source原点指向target原点的向量，也就是source坐标系原点移动到(tx,ty,tz),也就是source到target的变换~~ 某个点从原来的坐标系下的(tx,ty,tz)移动到新的坐标系下的(0,0,0),变换数学表达上是(0,0,0)=(tx,ty,tz)+T,所以T=-(tx,ty,tz),这个是肯定对的.形式上，平移可以认为是target(tx,ty,tx)点变换到了(0,0,0),也就是从target指向(0,0,0)的向量，也就是-(tx,ty,tx),也符合target到原点的变换，就是原点在target坐标系下的表示，不是那么直观.
 7. 点(x,y,z,1)向量(dx,dy,dz,0)
 8. 旋转是绕当前坐标系的原点进行的(因为是绕某个向量旋转，这个向量一定是从当前坐标系的原点出发的),如果想要绕某个点进行旋转,可以先平移到该点(或者说叫当前坐标系的原点移动到该点，也叫translate this point to origin，vtk的注释,得到新的坐标系),旋转后再平移回来,这就是vtk azimuth elevation的代码原理
 9. **法向量的变换不同于点的变换**,假设v n,经过变换M,得到v'=M*v;有nt*v=0-->n转置x(M逆)xMxv=0-->n转置x(M逆)xv'=0,又n'转置xv'=0
@@ -526,6 +526,61 @@ fragment shader的gl_Layer gl_ViewportIndex对应分层 多视口渲染
 
 用一个GL_TEXTURE_2D_ARRAY实现多个层的render target
 glScissorIndexed glDepthRangeArray glFramebufferTextureLayer
+
+# glViewPort blitFrame 帧缓冲区大小 窗口大小
+OpenGL需要创建一个上下文context,这个context会被attached到一个window
+viewport就是指定了这个window的可绘制区域(GLint x, GLint y, GLsizei width, GLsizei height)，实际是帧缓冲区的一个矩形子区域，**以设备像素为单位**,而不是设备无关像素
+
+OpenGL直接操作的是物理设备像素,而不是逻辑像素,
+glViewport glScissor glReadPixels glBlitFramebuffer都是基于物理像素的
+
+**//Qt源码中使用设备像素传给OpenGL**
+QVTKOpenGLWindow::paintGL()
+{
+  const QSize deviceSize = this->size() * this->devicePixelRatioF();//设备无关像素转换到设备像素,用于OpenGL
+  const auto fmt = this->context()->format();
+  if (fmt.stereo() && this->RenderWindow->GetStereoRender() &&
+    this->RenderWindow->GetStereoType() == VTK_STEREO_CRYSTAL_EYES)
+  {
+    this->RenderWindowAdapter->blitLeftEye(
+      this->defaultFramebufferObject(), GL_BACK_LEFT, QRect(QPoint(0, 0), deviceSize));
+    this->RenderWindowAdapter->blitRightEye(
+      this->defaultFramebufferObject(), GL_BACK_RIGHT, QRect(QPoint(0, 0), deviceSize));
+  }
+  else
+  {
+    this->RenderWindowAdapter->blit(
+      this->defaultFramebufferObject(), GL_BACK_LEFT, QRect(QPoint(0, 0), deviceSize));
+  }
+}
+
+
+ostate->vtkglViewport(destX, destY, destWidth, destHeight);
+ostate->vtkglScissor(destX, destY, destWidth, destHeight);
+ostate->vtkglBlitFramebuffer(srcX, srcY, srcX + srcWidth, srcY + srcHeight, destX, destY,
+destX + destWidth, destY + destHeight, bufferMode, interpolation);
+
+
+设置视口有两种情况:
+1. 窗口创建时
+2. 每次窗口大小改变时
+
+需要注意的是，当使用窗口系统时(如GLFW、SDL、Qt等),可能会遇到两种尺寸:   
+- 窗口尺寸（Window Size）：以屏幕坐标（或称为设备无关像素）为单位。在高DPI屏幕上，一个屏幕坐标可能对应多个设备像素。
+- 帧缓冲区尺寸（Framebuffer Size）：以像素（设备像素）为单位。
+  在Retina显示屏（Mac）或高DPI显示器上，窗口尺寸（比如800x600）可能对应一个更大的帧缓冲区尺寸（比如1600x1200）。
+![alt text](窗口尺寸vs帧缓冲区尺寸.png)
+
+调用`glViewport`时，我们应该使用帧缓冲区的尺寸（设备像素），而不是窗口的尺寸（设备无关像素）。这是**因为OpenGL的渲染操作最终作用于帧缓冲区，而帧缓冲区是由设备像素组成的。**
+
+在HiDPI上，窗口尺寸和帧缓冲区尺寸不同，正确获取帧缓冲区大小如下
+// 错误做法：使用窗口尺寸（DIPs）
+glfwGetWindowSize(window, &winWidth, &winHeight); // 800×600
+glViewport(0, 0, winWidth, winHeight); // 渲染区域只有1/4屏幕
+
+// 正确做法：使用帧缓冲尺寸
+glfwGetFramebufferSize(window, &fbWidth, &fbHeight); // 1600×1200
+glViewport(0, 0, fbWidth, fbHeight); // 完整渲染
 
 # shader
 ## built-in variables
