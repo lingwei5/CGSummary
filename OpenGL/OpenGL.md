@@ -425,6 +425,171 @@ z-fighting:
 2. 升级配置
 3. polygon offset进行偏移
 
+## 透视投影矩阵
+Generalized Perspective Projection Matrix: 
+默认的透视投影是camera在原点，正对着投影平面(屏幕)
+推广后，投影平面可以任意摆放，也可以不在原点，只是多了两个变换，一个是把屏幕转到垂直位置，一个是把camera平移到原点
+
+//摆正投影平面
+void vtkCamera::ComputeScreenOrientationMatrix()
+{
+  if (this->ProjectionPlaneOrientationMatrix == nullptr)
+  {
+    // Compute the screen orientation matrix lazily, and only once.
+    double vr[3] = { 0.0 };
+    double vu[3] = { 0.0 };
+    double vn[3] = { 0.0 };
+    double screenDiag[3] = { 0 };
+
+    for (int i = 0; i < 3; ++i)
+    {
+      vr[i] = this->ScreenBottomRight[i] - this->ScreenBottomLeft[i];
+      vu[i] = this->ScreenTopRight[i] - this->ScreenBottomRight[i];
+
+      this->ScreenCenter[i] = (this->ScreenBottomLeft[i] + this->ScreenTopRight[i]) / 2.0;
+      screenDiag[i] = this->ScreenBottomLeft[i] - this->ScreenTopRight[i];
+    }
+
+    this->OffAxisClippingAdjustment = vtkMath::Norm(screenDiag);
+
+    vtkMath::Normalize(vr);
+    vtkMath::Normalize(vu);
+    vtkMath::Cross(vr, vu, vn);
+    vtkMath::Normalize(vn);
+
+    this->ProjectionPlaneOrientationMatrix = vtkMatrix4x4::New();
+
+    this->ProjectionPlaneOrientationMatrix->SetElement(0, 0, vr[0]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(0, 1, vr[1]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(0, 2, vr[2]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(1, 0, vu[0]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(1, 1, vu[1]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(1, 2, vu[2]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(2, 0, vn[0]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(2, 1, vn[1]);
+    this->ProjectionPlaneOrientationMatrix->SetElement(2, 2, vn[2]);
+  }
+}
+
+//基于投影平面的变换，计算投影矩阵
+void vtkCamera::ComputeOffAxisProjectionFrustum()
+{
+  // This version of off-axis projection was implemented from the article
+  // referenced below, and variable names in this method were chosen to match
+  // those used in the article.
+  //
+  // TItle: Generalized perspective projection
+  // Author: Robert Kooima
+  // Date: 2009/6
+  // Journal: J. Sch. Electron. Eng. Comput. Sci
+  // Volume: 6
+
+  this->ComputeScreenOrientationMatrix();
+
+  double n = this->ClippingRange[0];
+  double f = this->ClippingRange[1];
+  double pe[3] = { 0.0 };
+
+  // Create an eye at the origin so it's easy to do the left/right shifting
+  double E[4] = { 0.0, 0.0, 0.0, 1.0 };
+  double shiftDistance = this->EyeSeparation / 2.0;
+
+  if (this->LeftEye)
+  {
+    E[0] -= shiftDistance;
+  }
+  else
+  {
+    E[0] += shiftDistance;
+  }
+
+  // Now transform the "origin eye" to its real position and orientation
+  this->EyeTransformMatrix->MultiplyPoint(E, E);
+  pe[0] = E[0];
+  pe[1] = E[1];
+  pe[2] = E[2];
+
+  double pa[4] = { this->ScreenBottomLeft[0], this->ScreenBottomLeft[1], this->ScreenBottomLeft[2],
+    1.0 };
+  double pb[4] = { this->ScreenBottomRight[0], this->ScreenBottomRight[1],
+    this->ScreenBottomRight[2], 1.0 };
+  double pc[4] = { this->ScreenTopRight[0], this->ScreenTopRight[1], this->ScreenTopRight[2], 1.0 };
+
+  double vr[3];
+  vr[0] = this->ProjectionPlaneOrientationMatrix->GetElement(0, 0);
+  vr[1] = this->ProjectionPlaneOrientationMatrix->GetElement(0, 1);
+  vr[2] = this->ProjectionPlaneOrientationMatrix->GetElement(0, 2);
+
+  double vu[3];
+  vu[0] = this->ProjectionPlaneOrientationMatrix->GetElement(1, 0);
+  vu[1] = this->ProjectionPlaneOrientationMatrix->GetElement(1, 1);
+  vu[2] = this->ProjectionPlaneOrientationMatrix->GetElement(1, 2);
+
+  double vn[3] = { 0.0 };
+  vn[0] = this->ProjectionPlaneOrientationMatrix->GetElement(2, 0);
+  vn[1] = this->ProjectionPlaneOrientationMatrix->GetElement(2, 1);
+  vn[2] = this->ProjectionPlaneOrientationMatrix->GetElement(2, 2);
+
+  double va[3] = { 0.0 };
+  double vb[3] = { 0.0 };
+  double vc[3] = { 0.0 };
+
+  for (int i = 0; i < 3; ++i)
+  {
+    va[i] = pa[i] - pe[i];
+    vb[i] = pb[i] - pe[i];
+    vc[i] = pc[i] - pe[i];
+  }
+
+  double d = -vtkMath::Dot(vn, va);
+  double nOverD = n / d;
+
+  double l = vtkMath::Dot(vr, va) * (nOverD);
+  double r = vtkMath::Dot(vr, vb) * (nOverD);
+  double b = vtkMath::Dot(vu, va) * (nOverD);
+  double t = vtkMath::Dot(vu, vc) * (nOverD);
+
+  // Populate it as glFrustum would do
+  this->ProjectionTransform->GetMatrix()->SetElement(0, 0, (2.0 * n) / (r - l));
+  this->ProjectionTransform->GetMatrix()->SetElement(0, 1, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(0, 2, (r + l) / (r - l));
+  this->ProjectionTransform->GetMatrix()->SetElement(0, 3, 0.0);
+
+  this->ProjectionTransform->GetMatrix()->SetElement(1, 0, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(1, 1, (2.0 * n) / (t - b));
+  this->ProjectionTransform->GetMatrix()->SetElement(1, 2, (t + b) / (t - b));
+  this->ProjectionTransform->GetMatrix()->SetElement(1, 3, 0.0);
+
+  this->ProjectionTransform->GetMatrix()->SetElement(2, 0, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(2, 1, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(2, 2, -(f + n) / (f - n));
+  this->ProjectionTransform->GetMatrix()->SetElement(2, 3, -(2.0 * f * n) / (f - n));
+
+  this->ProjectionTransform->GetMatrix()->SetElement(3, 0, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(3, 1, 0.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(3, 2, -1.0);
+  this->ProjectionTransform->GetMatrix()->SetElement(3, 3, 0.0);
+
+  vtkMatrix4x4::Multiply4x4(this->ProjectionTransform->GetMatrix(),
+    this->ProjectionPlaneOrientationMatrix, this->ProjectionTransform->GetMatrix());
+
+  // The viewer offset translation matrix, T, described in the paper, is kept
+  // in the view transform (see ComputeViewTransform()).  It's important to keep
+  // it there for lighting purposes.
+}
+
+vtk进行stereo渲染时，可以选择不同的立体模式，其中左右排图常见的模式。左右排图是将左右眼图像并排显示
+实际实现过程如下：
+1. 一个vtkRenderWindow, 一个vtkRenderer, 一个vtkCamera, 一个FBO
+2. 先渲染左眼图像，根据左眼位置计算离轴投影矩阵，将图像写入FBO，然后copy到cpu StereoBuffer
+3. 再渲染右眼图像，根据右眼位置计算离轴投影矩阵，将图像写入FBO，然后copy到cpu ResultFrame
+4. 利用vtkStereoCompositor::SplitViewportHorizontal将左右图像并排显示，然后渲染到屏幕上，这个过程实际是
+   1. 将StereoBuffer每隔一个像素复制到ResultFrame
+   2. 将ResultFrame每隔一个像素复制到ResultFrame
+   3. 将ResultFrame渲染到屏幕上
+   相当于左右眼视图被缩放到了一半，然后排图使其占据渲染窗口的左右半边
+
+
 ## row-major vs column-major order 行主序 vs 列主序
 在OpenGL中，矩阵存储方式是一个容易混淆的点。需要明确以下几点：
 1. **数学表示惯例**：
