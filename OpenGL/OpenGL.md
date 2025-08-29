@@ -78,6 +78,7 @@ Once initiated, the pipeline operates in the following order:
     6. glFrustum(l, r, b, t, n, f)就是屏幕坐标系下的垂直透视投影矩阵
     7. 再glRotate变换到世界坐标系同方向的坐标系下的斜透视投影矩阵
     8. 再glTranslate(-pe[0], -pe[1], -pe[2])变换到世界坐标系下的原点，这个有点疑问是眼睛坐标系还是世界坐标系啊？理论上应该是眼睛坐标系，因为投影是在camera下进行的
+16. view矩阵的z轴是从焦点指向相机位置，投影方向是从相机位置指向焦点，正好相反 ViewPlaneNormal == -DirectionOfProjection,以相机为原点,z轴是指定的，xy是根据up right计算出来的
 ## 投影矩阵推导
 无论是正交投影还是透视投影,其实变换矩阵的目的都是将view坐标系下的坐标转换到NDC[-1 1]空间,这个过程分解成了投影+透视除法两步,也就产生了(xe,ye,ze,1.0)-->(xp,yp,zp,wp)-->(xn,yn,zn,1.0)三种坐标
 
