@@ -426,7 +426,7 @@ z-fighting:
 2. 升级配置
 3. polygon offset进行偏移
 
-## 透视投影矩阵
+## 广义透视投影矩阵
 Generalized Perspective Projection Matrix: 
 默认的透视投影是camera在原点，正对着投影平面(屏幕)
 推广后，投影平面可以任意摆放，也可以不在原点，只是多了两个变换，一个是把屏幕转到垂直位置，一个是把camera平移到原点

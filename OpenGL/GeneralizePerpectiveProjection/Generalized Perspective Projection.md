@@ -282,3 +282,85 @@ https://learnwebgl.brown37.net/08_projections/projections_perspective.html ![alt
           );
 
 7. 通过眼追坐标，实时修改ProjectionPlaneOrientationMatrix，你眼动了，转变成屏幕被扭到了某个方向
+
+# OpenXR中的坐标系
+vtkVRHMDCamera
+world坐标系
+physical坐标系
+左右眼坐标系
+
+
+好的，我们来详细解释一下 `vtkVRHMDCamera.h` 文件中定义的几个关键矩阵。这些矩阵共同构成了一个从现实世界空间到最终屏幕显示空间的完整变换链，是 VR 渲染的核心。
+
+文件位置：[vtkVRHMDCamera.h](./Rendering/VR/vtkVRHMDCamera.h)
+
+这些矩阵可以分为三大类：世界空间、物理空间和投影空间。
+
+---
+
+### 1. 世界空间到物理空间
+
+这是变换链的起点，它将场景中的三维坐标（例如一个模型的顶点位置）从世界坐标系转换到用户所在的物理空间坐标系。
+
+*   **`WorldToPhysicalMatrix`**
+    *   **含义**: 世界坐标系到物理坐标系的变换矩阵。物理坐标系的原点通常位于用户的脚部，X轴指向用户的前方，Y轴指向上方，Z轴指向用户的右侧（遵循VTK的右手坐标系惯例）。
+    *   **作用**: 这个矩阵将场景中的所有物体（比如一个放在桌子上方的杯子）从绝对的世界位置，转换到相对于用户站立位置和朝向的位置。例如，如果用户在房间中走动，这个矩阵会相应改变，使得杯子相对于用户的位置保持不变。它包含了场景的整体平移和旋转。
+
+---
+
+### 2. 物理空间到眼睛空间
+
+这部分处理的是用户头部和眼睛的精确位置和朝向。在 VR 中，左眼和右眼看到的是略有不同的图像，因此需要分别处理。
+
+*   **`PhysicalToLeftEyeMatrix`**
+    *   **含义**: 物理坐标系到左眼坐标系的变换矩阵。
+    *   **作用**: 它将一个点从物理空间（脚部坐标系）转换到左眼的空间坐标系。这个矩阵包含了左眼相对于用户头部的偏移量（通常在 X 轴上有一个很小的正值，例如 0.032 米，代表眼距的一半）和头部的朝向（旋转）。当用户转动头部时，这个矩阵会实时更新。
+
+*   **`PhysicalToRightEyeMatrix`**
+    *   **含义**: 物理坐标系到右眼坐标系的变换矩阵。
+    *   **作用**: 与左眼矩阵类似，但它将点转换到右眼的空间坐标系。它在 X 轴上的偏移量通常是负值（例如 -0.032 米）。这两个矩阵是产生立体视觉效果的基础。
+
+*   **`WorldToLeftEyeMatrix`**
+    *   **含义**: 世界坐标系到左眼坐标系的变换矩阵。
+    *   **作用**: 这是一个组合矩阵，它等价于 `WorldToPhysicalMatrix * PhysicalToLeftEyeMatrix`。它直接将世界坐标转换为左眼坐标，简化了渲染计算。在渲染左眼视图时，这个矩阵会被用作视图矩阵。
+
+*   **`WorldToRightEyeMatrix`**
+    *   **含义**: 世界坐标系到右眼坐标系的变换矩阵。
+    *   **作用**: 等价于 `WorldToPhysicalMatrix * PhysicalToRightEyeMatrix`。在渲染右眼视图时，它会被用作视图矩阵。
+
+---
+
+### 3. 眼睛空间到投影空间
+
+这是变换链的最后一环，它将三维的相机（眼睛）空间坐标转换为二维的屏幕坐标，并处理透视效果，确保物体在远处看起来更小，在近处看起来更大。
+
+*   **`LeftEyeToProjectionMatrix`**
+    *   **含义**: 左眼坐标系到投影（裁剪）空间的变换矩阵。
+    *   **作用**: 这是标准的投影矩阵，定义了左眼的视锥体。它包含了视野、近裁剪面和远裁剪面等参数。这个矩阵会将左眼视图中的三维点映射到一个标准化的设备坐标（NDC）立方体中，其范围是 [-1, 1]。
+
+*   **`RightEyeToProjectionMatrix`**
+    *   **含义**: 右眼坐标系到投影（裁剪）空间的变换矩阵。
+    *   **作用**: 与左眼投影矩阵类似，它定义了右眼的视锥体。虽然左右眼的视锥体非常相似，但它们的视图矩阵（`WorldToLeftEyeMatrix` 和 `WorldToRightEyeMatrix`）不同，所以最终投影到屏幕上的图像是不同的，这就是立体视觉的来源。
+
+*   **`PhysicalToProjectionMatrixForLeftEye`**
+    *   **含义**: 物理坐标系到左眼投影空间的变换矩阵。
+    *   **作用**: 这是一个组合矩阵，它等价于 `LeftEyeToProjectionMatrix * PhysicalToLeftEyeMatrix`。它直接从物理空间一步到位到投影空间。这个矩阵非常有用，因为它将物理世界中的一个点（比如一个控制器）直接转换到了屏幕的裁剪空间，可以用于进行拾取等操作，而无需关心中间的眼部位置。
+
+*   **`PhysicalToProjectionMatrixForRightEye`**
+    *   **含义**: 物理坐标系到右眼投影空间的变换矩阵。
+    *   **作用**: 等价于 `RightEyeToProjectionMatrix * PhysicalToRightEyeMatrix`。同样，它用于将物理世界中的点直接转换到右眼的裁剪空间。
+
+### 总结与工作流程
+
+这些矩阵协同工作，完成从场景到双眼的完整渲染流程：
+
+1.  **准备阶段**: VR 系统会根据用户的头部位置和朝向，更新 `WorldToPhysicalMatrix`、`PhysicalToLeftEyeMatrix` 和 `PhysicalToRightEyeMatrix`。
+2.  **渲染左眼视图**:
+    *   计算组合视图矩阵 `WorldToLeftEyeMatrix`。
+    *   计算组合投影矩阵 `PhysicalToProjectionMatrixForLeftEye`。
+    *   使用这两个矩阵作为相机的 `ViewMatrix` 和 `ProjectionMatrix` 来渲染场景。
+3.  **渲染右眼视图**:
+    *   计算组合视图矩阵 `WorldToRightEyeMatrix`。
+    *   计算组合投影矩阵 `PhysicalToProjectionMatrixForRightEye`。
+    *   使用这两个矩阵作为相机的 `ViewMatrix` 和 `ProjectionMatrix` 来渲染场景。
+4.  **提交**: 将左右眼渲染好的图像分别提交给 VR 运行时，最终合成并显示在头显上，形成立体视觉。
