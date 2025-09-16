@@ -15,7 +15,8 @@ piler
 modern graphics cards by unifying the graphics and compute functionality into
 a single API
 
-**Part 1 setup**
+**Part 1 Drawing A Triangle**
+
 # VkInstance:
 VkInstanceCreateInfo
 	layer 
@@ -26,7 +27,10 @@ VkInstanceCreateInfo
 vkCreateInstance
 vkDestroyInstance
 
+可以同时选择并使用多个物理设备
+
 ## VkDebugUtilsMessengerEXT
+包含自定义回调函数的字段
 vkCreateDebugUtilsMessengerEXT
 vkDestroyDebugUtilsMessengerEXT
 显式加载auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
@@ -136,7 +140,7 @@ vkCreateDevice
 vkDestroyDevice
 
 创建逻辑设备主要的步骤包括：
-1. specify queue
+1. specify queue from queue family
 2. specify features
 
 ## VkDeviceQueueCreateInfo
@@ -515,6 +519,8 @@ vkQueuePresentKHR:显示结果
 
 4. 显式处理resize
 
+**Part II Vertext Buffers**
+
 # Vertex Buffer
 
 ## vertex input description
@@ -571,7 +577,7 @@ vkBindBufferMemory
 vkCmdBindVertexBuffers
 
 
-
+**Part III Uniform Buffers**
 # Uniform Buffer
 
 # Texture Mapping
@@ -669,6 +675,13 @@ question lists:
 4. VkPipelineLayout干啥的
 5. multisample
 6. ~~image imageview framebuffer attachment texture关系~~
+7. allocate vs create vs bind vs map vs unmap vs destroy
+8. instance extension, device specific extension  PFN_vkEnumerateInstanceExtensionProperties PFN_vkEnumerateDeviceExtensionProperties
+   (VkPhysicalDevice physicalDevice, const char* pLayerName, uint32_t* pPropertyCount, VkExtensionProperties* pProperties); 某个物理设备的某个layer的extension
+9. instance layer device layer
+10. vulkan如何实现的多线程 关键是queue吗?
+11. 实例 物理设备 设备 队列 队列族 layer extension feature property
+12. xx
 
 看pdf,同时查找资料加深理解,反复添加struct里的细节,建立思维导图
 1. 有哪些概念
@@ -677,4 +690,113 @@ question lists:
 
 11个layer:好像没在api里写出来
 6个queue family:也没见api里有![alt text](queue类型.png)
-VK_KHR_SWAPCHAIN_EXTENSION_NAME: VK_xxx_EXTENSION_NAME几百个
+VK_KHR_SWAPCHAIN_EXTENSION_NAME: VK_orgxxx_featureyyy_EXTENSION_NAME v1.4有380个左右
+
+
+# 几个名词的解析
+好的，这是一个非常核心的Vulkan概念问题。理解这些对象之间的关系和差异对于掌握Vulkan至关重要。我将对它们进行详细的比较和解释，并特别说明新加入的 **Feature (功能)** 概念。
+
+### 核心概念快速概览
+
+| 概念 | 中文 | 比喻 | 目的与关键点 |
+| :--- | :--- | :--- | :--- |
+| **Instance** | **实例** | **公司的总部** | 连接App和Vulkan驱动。是Vulkan的全局上下文，包含应用信息、启用的**全局Layer和Extension**。 |
+| **Layer** | **层** | **质量检测部门或翻译官** | 用于**调试、验证和监控**。在Vulkan调用链中注入额外代码，不影响核心功能。 |
+| **Extension** | **扩展** | **公司的特殊技能或设备** | 提供**额外的API功能**（新函数、结构体、枚举）。分为**实例扩展**和**设备扩展**。 |
+| **Physical Device** | **物理设备** | **公司办公室里的具体电脑硬件** | 代表一块具体的硬件（如GPU）。用于查询其**属性(Properties)**、**功能(Features)**、**扩展**支持和**队列家族**。 |
+| **Feature** | **功能** | **硬件部件的开关** | 代表物理设备支持的**核心硬件功能**（如几何着色器、各向异性过滤）。必须在创建逻辑设备时**显式启用**。 |
+| **Queue Family** | **队列家族** | **硬件中的不同专业部门** | 将硬件的执行单元按功能分组（图形、计算、传输等）。每个家族包含一个或多个**队列(Queue)**。 |
+
+---
+
+### 详细分解与比较
+
+#### 1. Vulkan Instance (实例)
+
+*   **是什么？** Vulkan应用的起点，是一个包含应用程序全局状态的对象。它是你与Vulkan驱动之间的桥梁。
+*   **何时创建？** 第一个被创建的对象。通过 `vkCreateInstance` 创建。
+*   **包含/指定什么？**
+    *   应用程序信息（名称、版本等 - `VkApplicationInfo`）。
+    *   要启用的**全局层** (Layers) （如验证层）。
+    *   要启用的**实例扩展** (Instance Extensions) （通常是平台相关的，如 `VK_KHR_surface`, `VK_KHR_win32_surface`）。
+*   **关系：** 它不绑定到任何特定硬件。在你有了Instance之后，你才能枚举系统中的Physical Devices。
+
+#### 2. Layers (层)
+
+*   **是什么？** 可插入的钩子（Hook），用于拦截、监控或增强Vulkan API调用。它们像“中间件”一样工作。
+*   **目的：** 主要用于**开发阶段**。
+    *   **验证层 (Validation Layers)**：最重要的层，检查参数错误、内存泄漏、线程安全问题等。是Vulkan开发不可或缺的调试工具。
+    *   **API 转储层**：记录所有的Vulkan调用。
+*   **作用范围：** 在现代Vulkan中，所有层都应在**Instance级别**启用，并作用于Instance和所有Device。
+
+#### 3. Extensions (扩展)
+
+*   **是什么？** 对核心Vulkan API的**功能扩展**。Vulkan的核心API非常精简，许多高级功能都通过扩展提供。
+*   **类型：**
+    *   **实例扩展 (Instance Extensions)**：在创建Instance时启用（`vkCreateInstance` 的 `ppEnabledExtensionNames` 参数）。通常提供与平台/窗口系统交互的功能（如 `VK_KHR_surface`）。
+    *   **设备扩展 (Device Extensions)**：在创建Logical Device时启用（`vkCreateDevice` 的 `ppEnabledExtensionNames` 参数）。提供与特定硬件相关的功能（如 `VK_KHR_swapchain`（交换链）, `VK_NV_ray_tracing`（光追））。
+*   **关键点：** 你必须先查询系统或设备支持哪些扩展，然后**显式启用**你需要的扩展。**仅仅支持某个扩展并不代表它被自动启用。**
+
+#### 4. Physical Device (物理设备)
+
+*   **是什么？** 代表系统中一个具体的Vulkan兼容硬件设备（通常是GPU）。
+*   **何时获取？** 在创建Instance之后，通过 `vkEnumeratePhysicalDevices` 枚举得到。
+*   **你能查询什么？** （这是Physical Device的核心作用）
+    *   **属性 (Properties)**：`vkGetPhysicalDeviceProperties` -> `VkPhysicalDeviceProperties`。包含设备名称、类型、驱动版本、API版本、供应商ID等。
+    *   **功能 (Features)**：`vkGetPhysicalDeviceFeatures` -> `VkPhysicalDeviceFeatures`。包含一堆布尔值，代表硬件支持的核心功能（如 `geometryShader`, `samplerAnisotropy`）。
+    *   **扩展 (Extensions)**：`vkEnumerateDeviceExtensionProperties`。获取该设备支持的所有**设备扩展**列表。
+    *   **队列家族 (Queue Families)**：`vkGetPhysicalDeviceQueueFamilyProperties`。获取该设备的队列家族列表及其属性（支持的操作、队列数量等）。
+*   **关系：** Physical Device是**只读**的。你基于它的属性、功能、扩展支持和队列家族来做出选择，并最终用它来创建**Logical Device**。
+
+#### 5. Features (功能)
+
+*   **是什么？** 代表物理设备支持的**核心Vulkan硬件功能**的结构体（`VkPhysicalDeviceFeatures` 或通过 `pNext` 链传递的更现代的结构体如 `VkPhysicalDeviceVulkan11Features`）。它包含许多开关，如 `geometryShader`, `tessellationShader`, `samplerAnisotropy`, `multiViewport` 等。
+*   **与Extension的区别**：
+    *   **Feature** 是**核心API规范的一部分**，但硬件可能不支持。它控制的是“怎么做”（如何执行一个核心指令）。
+    *   **Extension** 是**核心API之外的附加功能**。它提供的是“做什么”（全新的指令集和能力）。
+*   **关键点：** 即使物理设备支持某项功能（`vkGetPhysicalDeviceFeatures` 返回 `VK_TRUE`），你也**必须在创建Logical Device时**在 `VkDeviceCreateInfo::pEnabledFeatures`（或更现代的 `pNext` 链中）**显式启用它**，否则该功能在逻辑设备中不可用。
+
+#### 6. Queue Family (队列家族) 和 Queue (队列)
+
+*   **Queue Family是什么？** 将硬件的执行单元按其功能进行分类的组。例如：
+    *   **图形家族 (Graphics Family)**：可以执行图形管道相关任务（绘制）。
+    *   **计算家族 (Compute Family)**：可以执行计算任务。
+    *   **传输家族 (Transfer Family)**：专门用于数据拷贝。
+*   **Queue是什么？** 队列是队列家族的一个**具体实例**。你向队列提交命令缓冲区（Command Buffers），硬件会从队列中取出命令执行。
+*   **关系：** 你通过 `vkGetPhysicalDeviceQueueFamilyProperties` 获取Physical Device的队列家族信息。然后在创建Logical Device时，请求为你需要的队列家族创建一个或多个队列。
+
+---
+
+### 创建流程与关系总结
+
+一个典型的Vulkan初始化流程清晰地展示了这些概念之间的关系和启用顺序：
+
+1.  **创建 Instance**
+    *   填写应用信息 (`VkApplicationInfo`)。
+    *   指定要启用的**实例层**（如验证层）和**实例扩展**（如 `VK_KHR_surface`）。
+    *   调用 `vkCreateInstance`。
+
+2.  **枚举并选择 Physical Device**
+    *   调用 `vkEnumeratePhysicalDevices` 获取所有GPU。
+    *   遍历每个Physical Device，检查其：
+        *   **属性**（是不是独立GPU？）
+        *   **功能** (`vkGetPhysicalDeviceFeatures`) -> 记录下你想使用的功能（如各向异性过滤）。
+        *   **支持的设备扩展** (`vkEnumerateDeviceExtensionProperties`) -> 检查是否支持 `VK_KHR_swapchain` 等关键扩展。
+        *   **队列家族属性** -> 检查是否存在支持图形和呈现(Present)操作的家族。
+
+3.  **创建 Logical Device**
+    *   基于选定的Physical Device进行创建。
+    *   **启用设备扩展**：在 `ppEnabledExtensionNames` 中指定（如 `VK_KHR_swapchain`）。
+    *   **启用设备功能**：填充一个 `VkPhysicalDeviceFeatures` 结构体，将需要的功能设为 `VK_TRUE`，并将其指针传递给 `pEnabledFeatures`。**（关键步骤！）**
+    *   填写队列创建信息：指定要从哪些队列家族创建几个队列。
+    *   调用 `vkCreateDevice`，得到Logical Device。
+
+4.  **获取队列 (Queues)**
+    *   从创建好的Logical Device中，用 `vkGetDeviceQueue` 获取队列的句柄。
+
+**总结一下：**
+*   **Instance** 是入口。
+*   **Layer** 是开发时的安全保障。
+*   你用 **Physical Device** 来查询硬件的一切能力（**Properties、Features、Extensions、Queue Families**）。
+*   你根据查询结果，在创建 **Logical Device** 时**显式启用**你需要的 **Extensions** 和 **Features**。
+*   **Queue Family** 决定了你的任务（绘图、计算）被哪个硬件单元执行。
