@@ -121,10 +121,22 @@ vkEnumerateDeviceLayerProperties
     uint32_t        queueCount;
     uint32_t        timestampValidBits;
     VkExtent3D      minImageTransferGranularity;
+queue family常见的有
+ VK_QUEUE_GRAPHICS_BIT = 0x00000001, 图形队列
+ VK_QUEUE_COMPUTE_BIT = 0x00000002,	通用计算队列
+ VK_QUEUE_TRANSFER_BIT = 0x00000004, 内存传输队列
+ VK_QUEUE_SPARSE_BINDING_BIT = 0x00000008, 稀疏绑定队列
+ VK_QUEUE_PROTECTED_BIT = 0x00000010, 保护位 不知道是啥
+ VK_QUEUE_VIDEO_DECODE_BIT_KHR = 0x00000020, 视频编解码队列
+ VK_QUEUE_VIDEO_ENCODE_BIT_KHR = 0x00000040,
+ VK_QUEUE_OPTICAL_FLOW_BIT_NV = 0x00000100,
+
+不同的queue family对应不同的硬件(实现不同的功能)
+从VkCommandPoll allocate的command buffer提交命令到VkQueue,硬件从VkQueue提取命令执行，命令的提交是并行的
 
 
 # VkDevice:
-根据需求，从硬件的features extensions queuefamily创建对应的逻辑设备
+根据需求，从硬件的features extensions queuefamily创建对应的逻辑设备，一个物理设备可以对应多个VkDevice
 VkDeviceCreateInfo:
 	uint32_t                           queueCreateInfoCount;
     const VkDeviceQueueCreateInfo*     pQueueCreateInfos;
@@ -668,6 +680,8 @@ question lists:
    1. feature应该是硬件支持的一些功能,如细分/几何着色器 纹理压缩等
    2. property是显卡硬件的属性,如驱动版本 名称 厂商 硬件限制等
    3. VkQueueFlagBits应该是支持的queue类型
+   4. extension 是api的扩展
+   5. layer是一些hook钩子，可以插入代码执行额外功能，如debug
 2. vkxxxGetyyy vs vkxxxEnumerateyyy
    1. vkEnumeratePhysicalDevices Enumerate是把并列的physical device\extension等一一枚举出来
    2. get是对某个东西获取某个属性,属性就那么多,看这个支持咋样
@@ -675,7 +689,7 @@ question lists:
 4. VkPipelineLayout干啥的
 5. multisample
 6. ~~image imageview framebuffer attachment texture关系~~
-7. allocate vs create vs bind vs map vs unmap vs destroy
+7. allocate vs create vs bind vs map vs unmap vs destroy allocate 是从pool分配 create是新建内存创建是不是?
 8. instance extension, device specific extension  PFN_vkEnumerateInstanceExtensionProperties PFN_vkEnumerateDeviceExtensionProperties
    (VkPhysicalDevice physicalDevice, const char* pLayerName, uint32_t* pPropertyCount, VkExtensionProperties* pProperties); 某个物理设备的某个layer的extension
 9. instance layer device layer
@@ -694,6 +708,29 @@ VK_KHR_SWAPCHAIN_EXTENSION_NAME: VK_orgxxx_featureyyy_EXTENSION_NAME v1.4有380�
 
 
 # 几个名词的解析
+## enumerate是枚举有什么东西 get是获取某个东西的内容
+vkEnumerate主要是instance和physicaldevice及其layer、extension属性
+有9个
+1. PhysicalDevices
+2. InstanceExtensionProperties
+3. DeviceExtensionProperties
+4. InstanceLayerProperties
+5. DeviceLayerProperties
+6. InstanceVersion
+7. PhysicalDeviceGroups
+8. PhysicalDeviceGroupsKHR
+9. PhysicalDeviceQueueFamilyPerformanceQueryCountersKHR
+
+Get有很多180+
+1. PhysicalDeviceProperties
+2. PhysicalDeviceFeatures
+3. PhysicalDeviceMemoryProperties
+4. PhysicalDeviceQueueFamilyProperties
+5. InstanceProcAddr
+6. DeviceProcAddr
+
+
+Instance Layer Extension PhysicalDevice Feature QueueFamily
 好的，这是一个非常核心的Vulkan概念问题。理解这些对象之间的关系和差异对于掌握Vulkan至关重要。我将对它们进行详细的比较和解释，并特别说明新加入的 **Feature (功能)** 概念。
 
 ### 核心概念快速概览
