@@ -17,12 +17,18 @@ polarization:偏振
 ## 5.4 Radiometry
 ### Basic Quantities
 与RTR相互对照
-1. Energy Q: ![Alt text](Energy.png) (辐射)能量
+1. Energy Q: ![Alt text](Energy.png) (辐射)单个光子的能量
 2. Flux Phi: ![Alt text](Flux.png) 光(辐射)通量 单位时间内的能量 就是功率power
 3. irradiance E: ![Alt text](<irradiance E.png>) 辐射照度 辐射通量面积密度
 4. Intensity I: ![Alt text](<Intensity I.png>) 辐射强度 辐射通量角度密度
 5. Radiance L: ![Alt text](Radiance.png) 辐射亮度(辉度) 单位面积单位角度的辐射通量
 6. incident and exitant radiance ![Alt text](in-out-radiance.png) 入射辉度 出射辉度
+
+所以radiance L=d^2^(phi)/d(omega)dAcos(theta)=d(d(f(Q))/dt)/d(omega)dAcos(theta)=>d(f(hc/lambda))/d(omega)dAcos(theta)=>d^2^(f(lambda))/d(omega)dAcos(theta)d(lambda),即L是波长的函数，
+从而可以定义spectral radiance L~lambda~ = dL/d(lambda)
+第4版中![alt text](radiance与波长的关系.png) 
+
+进而每一个radiometry变量都有对应的spectral radiometric quantity
 
 ![alt text](基本变量表.png)
 
@@ -43,6 +49,20 @@ arch_length = theta * radius-->圆周角2pi,圆周长2pi * r
 surface_area = omega * radius^2--->立体角4pi,球面积4pi*r^2
 ![alt text](立体角微元与面积微元的球坐标关系.png)
 
+### 5.4.3 Luminance and Photometry 光度学
+photometry:光度学,研究可见电磁波(可见光)辐射的物理性质,包括辐射强度,辐射照度,辐射亮度等
+
+1. 由radiometric quantity得到 spectral radiometric quantity, 也就是波长的函数
+2. Each spectral radiometric quantity can be converted to its corresponding photometric quantity by integrating against the spectral response curve V(lambda) , which describes the relative sensitivity of the human eye to various wavelengths.波普辐射量再根据人眼对波普的响应曲线V(lambda)进行积分得到光度量
+
+定义luminance Y ![alt text](luminance与radiance的乘以人眼敏感度的积分关系.png), Y解释了同等能量下，不同spd普功率分布的绿光**看起来**比蓝光更亮
+
+Y、V(lambda)与XYZ表示的颜色紧密相关，CIE Y(lambda)三刺激曲线被选择为与V(lambda)成比例![alt text](<luminance Y用CIE Y三刺激值表示.png>)
+CIE Y(lambda) = 683 * V(lambda)
+
+![alt text](radiomeric量photomeric量的对应表.png) 这两量是通过 spectral radiometic quantity(radiometic量对波长的函数)及spectral response curve V(lambda)相乘得到的
+
+各种颜色空间 rtr+pbrt 讲清楚了，都是CIE XYZ推导的,CIE XYZ又是基于物理推导(物理学)+实验测量(生理学)得到的，整个从电磁辐射到人眼感知最终量化为颜色的过程就清晰了
 
 ## 5.6 Surface Reflection 引入BRDF
 
