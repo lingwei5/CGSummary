@@ -900,6 +900,204 @@ Qualifier order:invariant-qualifier interpolation-qualifier layout-qualifier oth
 	
 	glPixelStore 改变从application到opengl server或者 server到application的像素数据的内存布局格式
 
+1. internalformat（GPU 内部存储格式）​​
+  定义纹理在 GPU 内存中的存储格式，影响：
+    ​​通道数​​（如 R、RG、RGB、RGBA）。
+    ​​每个通道的位数​​（如 8-bit、16-bit、32-bit）。
+    ​​数据类型​​（如默认、SNORM、无符号整数、有符号整数、浮点数、深度、压缩格式）。
+2. format（cpu端数据通道）​​GL_RED GL_RG GL_RGB GL_RGBA等
+3. type（cpu数据类型）定义cpu内存中每个通道的数据类型 GL_UNSIGNED_BYTE GL_FLOAT等​​
+
+纹理内部格式的组成：
+For each format listed in Table 6.2 the full format is made up of an
+identifier representing **the base format, one or more size indicators, and an optional type**. 
+1. **The base format** essentially determines which components
+of the texture are present. Formats starting with GL_R have only the red
+component present, GL_RG formats have both red and green, GL_RGB
+formats contain red, green, and blue, and finally, GL_RGBA contain red,
+green, blue, and alpha.
+2. **The subsequent size indicator** determines the number of bits that are used
+to store the texture data. In many cases, only a single size parameter is
+included. In such cases, all components present receive the same number
+of bits. 
+By default, OpenGL stores textures in unsigned normalized format.
+When data is stored in unsigned normalized format, the values of the
+texels are stored in memory as an integer which when read into a shader is
+converted to floating point and divided by the maximum representable
+value for the corresponding size of integer. This results in data in the range
+0.0 to 1.0 (i.e., normalized data) being presented to the shader. If the
+_SNORM modifier is present (as in GL_RGBA8_SNORM, for example) then
+the data is signed normalized. In this case, the data in memory is treated as a
+signed integer, and before it is returned to the shader, it is converted to
+floating point and divided by the maximum representable signed integer
+value, resulting in floating-point values in the range −1.0 to 1.0 being
+returned to the shader.
+3. **Type specifiers** may be present in the internal format name. These type
+specifiers are I, UI, and F, indicating signed integer, unsigned integer, and
+floating-point data, respectively. The signed and unsigned integer internal
+formats are designed to be used with signed or unsigned integer sampler
+types in your shader (isampler2D or usampler2D, for example). The
+floating point internal formats are true floating-point formats in that the
+data is stored in memory in a floating-point representation and returned to
+the shader with the full precision supported by the OpenGL implementation. 
+
+也就是说
+1. 内部格式带有数据类型时，gpu存储值及shader读取的值就是指定类型
+2. 内部格式不带数据类型时，gpu存储的是有无符号整型，shader读取后会自动归一化到[0.0, 1.0]
+
+在 OpenGL 中，纹理的 **内部格式（`internalFormat`）** 决定了数据在 GPU 内存中的存储方式，而 **Shader 中的采样行为** 则取决于纹理的存储格式和采样器的类型。以下是纹理在 Shader 中的存储、采样、归一化及符号行为的详细解析：
+
+---
+**一、纹理内部格式（`internalFormat`）分类**
+OpenGL 纹理的内部格式可以分为以下几类：
+1. **无符号归一化格式（Normalized Unsigned）**  
+   - 存储：整数（如 `GL_RGBA8` 存储 `0-255` 的整数值）。  
+   - Shader 访问：自动归一化为 `[0.0, 1.0]` 的浮点数。  
+   - 典型格式：
+     - `GL_R8`、`GL_RG8`、`GL_RGB8`、`GL_RGBA8`（8-bit 每通道）
+     - `GL_R16`、`GL_RG16`、`GL_RGB16`、`GL_RGBA16`（16-bit 每通道）
+
+2. **有符号归一化格式（Normalized Signed）**  
+   - 存储：有符号整数（如 `GL_RGBA8_SNORM` 存储 `-128` 到 `127`）。  
+   - Shader 访问：自动归一化为 `[-1.0, 1.0]` 的浮点数。  
+   - 典型格式：
+     - `GL_R8_SNORM`、`GL_RG8_SNORM`、`GL_RGB8_SNORM`、`GL_RGBA8_SNORM`
+     - `GL_R16_SNORM`、`GL_RG16_SNORM`、`GL_RGB16_SNORM`、`GL_RGBA16_SNORM`
+
+3. **浮点格式（Floating-Point）**  
+   - 存储：直接存储浮点数（如 `GL_R32F`）。  
+   - Shader 访问：直接返回原始浮点值（无归一化）。  
+   - 典型格式：
+     - `GL_R16F`、`GL_RG16F`、`GL_RGB16F`、`GL_RGBA16F`（16-bit 半精度浮点）
+     - `GL_R32F`、`GL_RG32F`、`GL_RGB32F`、`GL_RGBA32F`（32-bit 单精度浮点）
+
+4. **整数格式（Integer）**  
+   - 存储：直接存储整数（无归一化）。  
+   - Shader 访问：返回原始整数值（`int` 或 `uint`）。  
+   - 典型格式：
+     - `GL_R8UI`、`GL_RG8UI`、`GL_RGB8UI`、`GL_RGBA8UI`（无符号整数）
+     - `GL_R8I`、`GL_RG8I`、`GL_RGB8I`、`GL_RGBA8I`（有符号整数）
+     - `GL_R16UI`、`GL_RG16UI`、`GL_RGB16UI`、`GL_RGBA16UI`
+     - `GL_R32UI`、`GL_RG32UI`、`GL_RGB32UI`、`GL_RGBA32UI`
+
+5. **深度/模板格式（Depth/Stencil）**  
+   - 存储：深度值或模板值。  
+   - Shader 访问：通过 `sampler2DShadow` 或 `imageLoad` 读取。  
+   - 典型格式：
+     - `GL_DEPTH_COMPONENT16`、`GL_DEPTH_COMPONENT24`、`GL_DEPTH_COMPONENT32F`
+     - `GL_DEPTH24_STENCIL8`、`GL_DEPTH32F_STENCIL8`
+
+6. **压缩格式（Compressed）**  
+   - 存储：块压缩（如 DXT/S3TC、ASTC）。  
+   - Shader 访问：解码后返回归一化值（`[0.0, 1.0]`）。  
+   - 典型格式：
+     - `GL_COMPRESSED_RGBA_S3TC_DXT1`（BC1）
+     - `GL_COMPRESSED_RGBA_S3TC_DXT5`（BC3）
+     - `GL_COMPRESSED_RGBA_BPTC_UNORM`（BC7）
+
+---
+
+**二、Shader 采样与数据访问**
+**1. 采样器类型决定数据解释方式**
+| 采样器类型 | 适用纹理格式 | 返回值类型 | 归一化行为 |
+| :-------- | :---------- | :-------- | :-------- |
+| `sampler2D` | 无符号归一化（`GL_RGBA8`） | `vec4`（`[0.0, 1.0]`） | ✅ 自动归一化 |
+| `sampler2D_SNORM` | 有符号归一化（`GL_RGBA8_SNORM`） | `vec4`（`[-1.0, 1.0]`） | ✅ 自动归一化 |
+| `sampler2D_FLOAT` | 浮点（`GL_RGBA16F`） | `vec4`（原始浮点值） | ❌ 无归一化 |
+| `usampler2D` | 无符号整数（`GL_RGBA8UI`） | `uvec4`（`0-255`） | ❌ 无归一化 |
+| `isampler2D` | 有符号整数（`GL_RGBA8I`） | `ivec4`（`-128-127`） | ❌ 无归一化 |
+
+**示例：**
+```glsl
+uniform sampler2D colorTex;       // 无符号归一化纹理（[0.0, 1.0]）
+uniform sampler2D_SNORM normTex; // 有符号归一化纹理（[-1.0, 1.0]）
+uniform sampler2D_FLOAT hdrTex;  // 浮点纹理（直接返回浮点值）
+uniform usampler2D idTex;        // 无符号整数纹理（返回 uint）
+
+void main() {
+    vec4 color = texture(colorTex, uv); // [0.0, 1.0]
+    vec4 normal = texture(normTex, uv);  // [-1.0, 1.0]
+    vec4 hdr = texture(hdrTex, uv);      // 原始浮点值
+    uvec4 id = texture(idTex, uv);       // 无符号整数
+}
+```
+
+**2. 归一化（Normalization）的影响**
+- **无符号归一化纹理（`GL_RGBA8`）**：
+  - 存储：`255`（`0xFF`） → Shader 读取：`1.0`。
+  - 存储：`127`（`0x7F`） → Shader 读取：`127/255 ≈ 0.498`。
+- **有符号归一化纹理（`GL_RGBA8_SNORM`）**：
+  - 存储：`127`（`0x7F`） → Shader 读取：`1.0`。
+  - 存储：`-128`（`0x80`） → Shader 读取：`-1.0`。
+- **浮点纹理（`GL_R32F`）**：
+  - 存储：`3.14` → Shader 读取：`3.14`（无归一化）。
+
+**3. 整数纹理的特殊性**
+- **`usampler2D` / `isampler2D`**：
+  - 直接返回整数，不进行归一化。
+  - 适用于存储 ID、索引、计数器等数据。
+  - **不能使用 `textureLod` 或 `textureGrad`**（仅支持 `texture` 或 `texelFetch`）。
+
+---
+
+**三、典型用例**
+**1. 颜色贴图（sRGB 颜色空间）**
+```cpp
+glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+```
+- **Shader 访问**：
+  ```glsl
+  uniform sampler2D colorTex;
+  vec4 color = texture(colorTex, uv); // 自动 sRGB → 线性空间
+  ```
+
+**2. 法线贴图（有符号归一化）**
+```cpp
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8_SNORM, width, height, 0, GL_RGBA, GL_BYTE, data);
+```
+- **Shader 访问**：
+  ```glsl
+  uniform sampler2D_SNORM normalTex;
+  vec3 normal = texture(normalTex, uv).xyz * 2.0 - 1.0; // [-1.0, 1.0]
+  ```
+
+**3. HDR 环境贴图（浮点）**
+```cpp
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, data);
+```
+- **Shader 访问**：
+  ```glsl
+  uniform sampler2D_FLOAT envMap;
+  vec3 radiance = texture(envMap, uv).rgb; // 直接读取浮点值
+  ```
+
+**4. 整数 ID 贴图（无符号整数）**
+```cpp
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, width, height, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data);
+```
+- **Shader 访问**：
+  ```glsl
+  uniform usampler2D idTex;
+  uint objectId = texture(idTex, uv).r; // 直接读取 uint 值
+  ```
+
+---
+
+**四、总结**
+| 纹理格式类型 | Shader 采样器 | 返回值范围 | 适用场景 |
+| :---------- | :------------ | :-------- | :------ |
+| **无符号归一化**（`GL_RGBA8`） | `sampler2D` | `[0.0, 1.0]` | 颜色贴图、漫反射 |
+| **有符号归一化**（`GL_RGBA8_SNORM`） | `sampler2D_SNORM` | `[-1.0, 1.0]` | 法线贴图、矢量场 |
+| **浮点**（`GL_RGBA16F`） | `sampler2D_FLOAT` | 原始浮点值 | HDR、光照计算 |
+| **无符号整数**（`GL_R32UI`） | `usampler2D` | `0` 到 `2^32-1` | ID 贴图、索引 |
+| **有符号整数**（`GL_R32I`） | `isampler2D` | `-2^31` 到 `2^31-1` | 特殊计算 |
+
+**关键结论：**
+1. **归一化纹理**（`GL_RGBA8`）自动映射到 `[0.0, 1.0]`，适合颜色数据。
+2. **浮点纹理**（`GL_RGBA16F`）保留原始值，适合 HDR 和物理计算。
+3. **整数纹理**（`GL_R32UI`）直接返回整数，适合 ID 存储。
+4. **采样器类型必须匹配纹理格式**，否则行为未定义或返回错误数据。
+
 纹理参数: 
 
 	glTexParameter
