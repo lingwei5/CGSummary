@@ -868,7 +868,9 @@ Qualifier order:invariant-qualifier interpolation-qualifier layout-qualifier oth
 
 *texture target*: 纹理目标, 其实是纹理数据的dimensionality
 
-	GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_1D_ARRAY, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_RECTANGLE, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_BUFFER, GL_TEXTURE_2D_MULTISAMPLE or GL_TEXTURE_2D_MULTISAMPLE_ARRAY cubemap是特殊的纹理array 
+	GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_1D_ARRAY, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_RECTANGLE, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_BUFFER, GL_TEXTURE_2D_MULTISAMPLE or GL_TEXTURE_2D_MULTISAMPLE_ARRAY cubemap是特殊的纹理array
+
+  Rectangle Texture(GL_TEXTURE_RECTANGLE)是二维的，但不是GL_TEXTURE_2D，只包含一张image，无mipmap，没有纹理坐标的归一化，坐标是像素坐标，坐标范围是[0, width] [0, height]，size可以不是2的幂 sampler使用sampler2DRect，纹理坐标自动使用texel-space坐标 是在非2次幂纹理支持之前使用不规则尺寸纹理的方案，尤其是用作render target；现代视角来看，用处变少了
 	
 	*glBindTexture*(target,id) glBindImageTexture
 
@@ -884,6 +886,42 @@ Qualifier order:invariant-qualifier interpolation-qualifier layout-qualifier oth
 
 	glTexSubImage3D
 
+纹理参数: 
+
+	glTexParameter
+	glSamplerParameter 
+
+	GL_TEXTURE_MIN_FILTER GL_TEXTURE_MAG_FILTER GL_TEXTURE_MIN_LOD GL_TEXTURE_SWIZZLE_A GL_TEXTURE_BORDER_COLOR
+
+Proxy texture:
+
+	代理纹理 用来嗅探OpenGL的纹理实现到什么程度
+	GL_PROXY_TEXTURE_1D GL_PROXY_TEXTURE_3D
+
+*Sampler*:采样器,opaque 数据类型,用于在shader中获取纹理的texel,对应 纹理单元
+
+sampler2D image2D
+
+纹理类型: 包括 3d texture, 纹理数组, cube map, shadow map, depth-stencil纹理
+
+texture views:
+	同一个纹理数据,进行不同的类型 格式等解释,从而变成两个纹理
+
+texture compressed:
+	
+	移动端跟桌面端支持的格式区别较大
+	S3TC/DXTn/BCn directx 纹理压缩
+	ASTC
+	GL_COMPRESSED_RED_RGTC1 
+	glCompressedTexImage3D
+
+
+Procedual texture:
+
+	用shader生成纹理,而不是从内存传给OpenGL
+
+
+## 纹理数据的存储 查询(采样器)
 *texture format*: 纹理格式 纹理对象的数据类型,包括内部格式 外部格式
 1. internal format:OpenGL用来在内部存储纹理图像的格式
 	GL_R8:假的浮点型,[0.0, 1.0],0-255归一化到[0 1]
@@ -900,6 +938,7 @@ Qualifier order:invariant-qualifier interpolation-qualifier layout-qualifier oth
 	
 	glPixelStore 改变从application到opengl server或者 server到application的像素数据的内存布局格式
 
+### 内部格式 外部格式的含义
 1. internalformat（GPU 内部存储格式）​​
   定义纹理在 GPU 内存中的存储格式，影响：
     ​​通道数​​（如 R、RG、RGB、RGBA）。
@@ -945,6 +984,55 @@ the shader with the full precision supported by the OpenGL implementation.
 1. 内部格式带有数据类型时，gpu存储值及shader读取的值就是指定类型
 2. 内部格式不带数据类型时，gpu存储的是有无符号整型，shader读取后会自动归一化到[0.0, 1.0]
 
+### sampler类型及texel 查询
+sampler有几种格式:
+1. sampler3D，不带前缀的，采样结果是浮点数据，对应的内部格式包括真正的浮点数GL_R16F格式和gpu内存中不带数据类型的有符号/无符号整型归一化之后的值
+2. isampler3D，采样结果是有符号整数数据，对应的内部格式包括GL_R8I格式
+3. usampler3D，采样结果是无符号整数数据，对应的内部格式包括GL_R8UI格式
+4. sampler2DShadow，shadow sampler专门用于含有深度通道的纹理采样，采样结果是[0.0, 1.0]的浮点数据，对应的内部格式包括GL_DEPTH_COMPONENT16格式
+5. gsampler2DRect or gsampler2DRectShadow 采样GL_TEXTURE_RECTANGLE纹理，使用非归一化的纹理坐标，旧时代对不规则尺寸纹理的支持，如render target
+6. 深度通道的纹理被当做 单通道浮点型纹理(actual floats or unsigned Normalized Integers)，模板通道的纹理被当做单通道无符号整型纹理
+7. sRGB对应的内部格式有GL_SRGB8 GL_SRGB8_ALPHA8, 使用sampler1D浮点采样器，自动转换到线性空间 
+
+texture lookup functions:
+1. 纹理坐标 可以是归一化[0.0, 1.0]的纹理坐标(可以独立于纹理size)或texel-space [0, size-1]的纹理坐标，取决于对应dimension的size，如GL_TEXTURE_RECTANGLE
+2. shader任意stage都可以读取纹理，但可能有一些限制，如mipmap因为实际实现需要计算texel占据的窗口尺寸(理论上需要计算图元到相机的距离)，所以只能在fragment shader中读取
+3. textureSize(gsampler sampler​, int lod​)查询texture size
+4. textureQueryLevels(gsampler sampler​);查询mipmap level数量, textureLOD等函数就在这个范围内使用
+针对不同使用情景，有不同的纹理坐标使用方式，对应不用的texture api，如下   
+5. texture(gsampler sampler​, vec texCoord​[, float bias​])获取texel值的基础api，返回值类型由sampler类型决定
+6. textureOffset(gsampler sampler​, vec texCoord​, ivec offset​[, float bias​]);坐标加上偏移后再查询
+7. textureProj(gsampler sampler​, vec projTexCoord​[, float bias​]);投影纹理坐标查询，相对于texture api，projTexCoord​坐标比需要的通道数多了一个通道，其他texture真正需要的纹理坐标通道除以这个通道作为texture真正的输入纹理坐标 用于阴影纹理 投影贴花等
+8. textureLod(gsampler sampler​, vec texCoord​, float lod​);显式指定mipmap level，而不是硬件自动计算
+9. textureGrad(gsampler sampler​, vec texCoord​, gradvec dTdx​, gradvec dTdy​);显式指定lod的梯度，而不是硬件自动计算
+10. textureGather(gsampler sampler​​, vec texCoord​​, int comp​);不进行filtering，直接从纹理中获取纹理坐标最近的四个texel的某个通道的值，这4个相同通道的值放到了XYZW的vec里
+11. textureProjOffset
+    textureProjLod
+    textureProjLodOffset
+    textureProjGrad
+    textureProjGradOffset
+    textureLodOffset
+    textureGradOffset
+12. texelFetch(gsampler sampler​, ivec texCoord​[, int lod​] [, int sample​]); 直接用texel-space坐标获取纹理值，不滤波
+
+其中，The "Grad" and "Lod" versions of functions do not require implicit derivatives. If either "Grad" or "Lod" is not present, then the function does require implicit derivatives，用来计算mipmap level的，需要计算dFdx和dFdy
+
+``` c
+float computeManualLOD(vec2 texCoord, vec2 textureSize)
+{
+    // 计算纹理坐标的屏幕空间导数
+    vec2 dx = dFdx(texCoord * textureSize);
+    vec2 dy = dFdy(texCoord * textureSize);
+    
+    // 计算覆盖的纹素数量 可以理解为一个屏幕像素代表的texel的步长
+    float max_span = max(length(dx), length(dy));
+    
+    // 计算LOD：log2(覆盖纹素数)
+    return log2(max_span);
+}
+```
+
+### 纹理的存储格式与Shader中的采样行为的 AI总结
 在 OpenGL 中，纹理的 **内部格式（`internalFormat`）** 决定了数据在 GPU 内存中的存储方式，而 **Shader 中的采样行为** 则取决于纹理的存储格式和采样器的类型。以下是纹理在 Shader 中的存储、采样、归一化及符号行为的详细解析：
 
 ---
@@ -1002,16 +1090,16 @@ OpenGL 纹理的内部格式可以分为以下几类：
 | 采样器类型 | 适用纹理格式 | 返回值类型 | 归一化行为 |
 | :-------- | :---------- | :-------- | :-------- |
 | `sampler2D` | 无符号归一化（`GL_RGBA8`） | `vec4`（`[0.0, 1.0]`） | ✅ 自动归一化 |
-| `sampler2D_SNORM` | 有符号归一化（`GL_RGBA8_SNORM`） | `vec4`（`[-1.0, 1.0]`） | ✅ 自动归一化 |
-| `sampler2D_FLOAT` | 浮点（`GL_RGBA16F`） | `vec4`（原始浮点值） | ❌ 无归一化 |
+| `sampler2D` | 有符号归一化（`GL_RGBA8_SNORM`） | `vec4`（`[-1.0, 1.0]`） | ✅ 自动归一化 |
+| `sampler2D` | 浮点（`GL_RGBA16F`） | `vec4`（原始浮点值） | ❌ 无归一化 |
 | `usampler2D` | 无符号整数（`GL_RGBA8UI`） | `uvec4`（`0-255`） | ❌ 无归一化 |
 | `isampler2D` | 有符号整数（`GL_RGBA8I`） | `ivec4`（`-128-127`） | ❌ 无归一化 |
 
 **示例：**
 ```glsl
 uniform sampler2D colorTex;       // 无符号归一化纹理（[0.0, 1.0]）
-uniform sampler2D_SNORM normTex; // 有符号归一化纹理（[-1.0, 1.0]）
-uniform sampler2D_FLOAT hdrTex;  // 浮点纹理（直接返回浮点值）
+uniform sampler2D normTex; // 有符号归一化纹理（[-1.0, 1.0]）
+uniform sampler2D hdrTex;  // 浮点纹理（直接返回浮点值）
 uniform usampler2D idTex;        // 无符号整数纹理（返回 uint）
 
 void main() {
@@ -1057,7 +1145,7 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8_SNORM, width, height, 0, GL_RGBA, GL_BYT
 ```
 - **Shader 访问**：
   ```glsl
-  uniform sampler2D_SNORM normalTex;
+  uniform sampler2D normalTex;
   vec3 normal = texture(normalTex, uv).xyz * 2.0 - 1.0; // [-1.0, 1.0]
   ```
 
@@ -1067,7 +1155,7 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, 
 ```
 - **Shader 访问**：
   ```glsl
-  uniform sampler2D_FLOAT envMap;
+  uniform sampler2D envMap;
   vec3 radiance = texture(envMap, uv).rgb; // 直接读取浮点值
   ```
 
@@ -1087,8 +1175,8 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, width, height, 0, GL_RED_INTEGER, GL_UN
 | 纹理格式类型 | Shader 采样器 | 返回值范围 | 适用场景 |
 | :---------- | :------------ | :-------- | :------ |
 | **无符号归一化**（`GL_RGBA8`） | `sampler2D` | `[0.0, 1.0]` | 颜色贴图、漫反射 |
-| **有符号归一化**（`GL_RGBA8_SNORM`） | `sampler2D_SNORM` | `[-1.0, 1.0]` | 法线贴图、矢量场 |
-| **浮点**（`GL_RGBA16F`） | `sampler2D_FLOAT` | 原始浮点值 | HDR、光照计算 |
+| **有符号归一化**（`GL_RGBA8_SNORM`） | `sampler2D` | `[-1.0, 1.0]` | 法线贴图、矢量场 |
+| **浮点**（`GL_RGBA16F`） | `sampler2D` | 原始浮点值 | HDR、光照计算 |
 | **无符号整数**（`GL_R32UI`） | `usampler2D` | `0` 到 `2^32-1` | ID 贴图、索引 |
 | **有符号整数**（`GL_R32I`） | `isampler2D` | `-2^31` 到 `2^31-1` | 特殊计算 |
 
@@ -1097,40 +1185,6 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, width, height, 0, GL_RED_INTEGER, GL_UN
 2. **浮点纹理**（`GL_RGBA16F`）保留原始值，适合 HDR 和物理计算。
 3. **整数纹理**（`GL_R32UI`）直接返回整数，适合 ID 存储。
 4. **采样器类型必须匹配纹理格式**，否则行为未定义或返回错误数据。
-
-纹理参数: 
-
-	glTexParameter
-	glSamplerParameter 
-
-	GL_TEXTURE_MIN_FILTER GL_TEXTURE_MAG_FILTER GL_TEXTURE_MIN_LOD GL_TEXTURE_SWIZZLE_A GL_TEXTURE_BORDER_COLOR
-
-Proxy texture:
-
-	代理纹理 用来嗅探OpenGL的纹理实现到什么程度
-	GL_PROXY_TEXTURE_1D GL_PROXY_TEXTURE_3D
-
-*Sampler*:采样器,opaque 数据类型,用于在shader中获取纹理的texel,对应 纹理单元
-
-sampler2D image2D
-
-纹理类型: 包括 3d texture, 纹理数组, cube map, shadow map, depth-stencil纹理
-
-texture views:
-	同一个纹理数据,进行不同的类型 格式等解释,从而变成两个纹理
-
-texture compressed:
-	
-	移动端跟桌面端支持的格式区别较大
-	S3TC/DXTn/BCn directx 纹理压缩
-	ASTC
-	GL_COMPRESSED_RED_RGTC1 
-	glCompressedTexImage3D
-
-
-Procedual texture:
-
-	用shader生成纹理,而不是从内存传给OpenGL
 
 
 # per fragment op
