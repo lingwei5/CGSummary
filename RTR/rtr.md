@@ -1275,6 +1275,17 @@ forward shading:
       透明物体的渲染需要先延迟渲染不透明物体,再前向渲染透明物体
       难以实现MSAA
 
+Vega Prime中的延迟渲染示意:  
+
+1. Geometry Pass,
+      First, a geometry pass renders all visible scene geometries. 
+      It captures various information on every fragment, stored in textures, for use in later passes. 
+      Captured information includes: albedo color, emitted color, eye-space position, eye-space normals, and material data.
+      When transparency is enabled, a second geometry pass captures similar information for partially-transparent geometries, and stores it in separate textures
+      先渲染不透明物体,再渲染透明物体，将信息分别存储在G-buffer中，存储的信息如下图所示  
+   ![alt text](GBuffer里的具体内容.png)
+2. Lighting Pass, A Light Pass then uses the information previously captured to compute the contribution for non-celestial light sources. The result is stored in a texture for later use.
+When transparency is enabled, a second Light Pass computes lighting for partially-transparent geometries,
 
 ## 20.2 Decal Rendering
 贴花渲染是3D世界中动态生成细节的一种常用方法。贴花常用于制作子弹孔、血迹、轮胎痕迹以及其它相似的项作为游戏中发生的事件。它们也可以用于设计师使用位于墙上的污迹、破损效果的纹理来丰富场景。
