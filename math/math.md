@@ -43,6 +43,9 @@
 
 数值积分 $\int$ $\int_a^b f(x)dx$
 
+# 数值计算
+[数值计算书](./NumericalRecipesinC.pdf) [代码](https://github.com/tranqv/Numerical-Recipes-in-C/tree/main) [对应的官网](https://numerical.recipes/)
+
 # 输入积分号 ∫
 在电脑上打出积分号 ∫，最常用的是 Alt 快捷键、Word/Office 公式、输入法软键盘、LaTeX 四种方式，下面按系统和场景整理最实用方法。
 一、Windows 通用（所有软件可用）
