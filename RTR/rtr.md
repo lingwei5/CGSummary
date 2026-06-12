@@ -1276,7 +1276,6 @@ forward shading:
       难以实现MSAA
 
 Vega Prime中的延迟渲染示意:  
-
 1. Geometry Pass,
       First, a geometry pass renders all visible scene geometries. 
       It captures various information on every fragment, stored in textures, for use in later passes. 
@@ -1286,6 +1285,360 @@ Vega Prime中的延迟渲染示意:
    ![alt text](GBuffer里的具体内容.png)
 2. Lighting Pass, A Light Pass then uses the information previously captured to compute the contribution for non-celestial light sources. The result is stored in a texture for later use.
 When transparency is enabled, a second Light Pass computes lighting for partially-transparent geometries,
+
+### 延迟渲染（Deferred Rendering / Deferred Shading）全景解析
+
+---
+
+#### 一、核心原理——为什么要"延迟"？
+
+##### 问题来源：前向渲染的痛点
+
+传统 **前向渲染（Forward Rendering）** 的做法是：**画每个物体时，当场把所有光照全部算完**。
+
+```
+// 前向渲染：每个片段 × 每个光源
+for each object:
+    for each fragment:
+        for each light:       // ← 哪怕这个光源根本照不到这里
+            color += Shade(light)
+```
+
+后果很明显：
+- **光源一多就爆炸** —— 复杂度 ≈ O(物体数 × 光源数 × Overdraw)
+- **Overdraw 浪费严重** —— 被遮挡的像素也白白跑了光照计算
+- 背后的山体、墙后面的箱子，光照白算了
+
+##### 延迟渲染的解法：**先别算光，先把可见表面的几何信息记下来，再统一算**
+
+> 所谓"延迟"，就是把**光照计算从"画物体时"延迟到"所有物体画完后"**，移到**屏幕空间**做一次性的后处理式光照。
+
+核心洞察：
+
+> **最终屏幕上只有 ~W×H 个像素需要着色。与其让几千个三角形各自带着光照跑一遍，不如先把"最终活下来的表面"的信息存下来，然后只对这些存活像素算光。**
+
+---
+
+#### 二、两阶段管线（The Two-Pass Pipeline）
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Deferred Rendering                     │
+│                                                          │
+│  Pass 1: Geometry Pass (无光照)                           │
+│  ┌─────────────────────────────────────────┐             │
+│  │ 把所有不透明物体光栅化一遍               │             │
+│  │ 用 MRT（多渲染目标）同时写出:             │             │
+│  │   WorldPos / ViewPos  → RT0              │             │
+│  │   Normal                → RT1             │             │
+│  │   Albedo + Specular     → RT2             │             │
+│  │   (Depth 正常写深度缓冲)  │             │
+│  │  ⇒ 得到 G-Buffer                        │             │
+│  └─────────────────────────────────────────┘             │
+│                         ↓                                 │
+│  Pass 2: Lighting Pass (屏幕空间光照)                      │
+│  ┌─────────────────────────────────────────┐             │
+│  │ 用一个全屏 Quad / 逐个光体积:            │             │
+│  │   对每个像素读 G-Buffer                   │             │
+│  │   按光源类型做光照累加                    │             │
+│  │   ⇒ 写最终颜色到默认FrameBuffer          │             │
+│  └─────────────────────────────────────────┘             │
+│                                                          │
+│  Pass 3 (可选): Forward Pass for Transparents             │
+│  ┌─────────────────────────────────────────┐             │
+│  │ 透明物体仍走前向渲染，叠在最终图像上      │             │
+│  └─────────────────────────────────────────┘             │
+└─────────────────────────────────────────────────────────┘
+```
+
+**复杂度变为**：O(可见像素数 + ∑各光源覆盖的像素数)，与场景几何总量基本脱钩。
+
+---
+
+#### 三、关键数据结构 —— G-Buffer
+
+##### 3.1 最小可用 G-Buffer（Classic PBR Deferred）
+
+| 缓冲区 | 存储内容 | 典型格式 | 说明 |
+|--------|---------|---------|------|
+| **RT0 — Position** | 世界坐标 / 视图坐标 | `RGBA32F` 或 `RGB16F` | 也可用 **Depth + 逆矩阵重建** 省掉此RT |
+| **RT1 — Normal** | 世界空间法线（归一化） | `RGB10A2` / `RGB16F` | 可只存 xy，z = sqrt(1−x²−y²) |
+| **RT2 — Albedo** | 反照率 RGB | `RGBA8` SRGB | 基础颜色，无光照 |
+| **RT2/Separate — Material** | 粗糙度 / 金属度 / AO / Specular | `RGBA8` 或打包进 Albedo.a | PBR 材质参数 |
+| **Depth Buffer** | 深度（自动） | `D24S8` | 几何Pass靠它做深度剔除 |
+
+> 实际引擎中 G-Buffer 通常有 **3~5 个渲染目标**。
+
+##### 3.2 经典压缩技巧（非常重要）
+
+**Position 不存法**（最常用优化）：
+
+$$
+\text{WorldPos} = \text{InvViewProj} \times \text{screenUV} \times \text{depth}
+$$
+
+→ 省掉整整一张 Float 纹理，只剩 **Normal + Albedo + Material + Depth**，大幅降带宽。
+
+**法线编码**：
+
+```cpp
+// Octahedral encoding: 把单位法线压进 RG16F 或 RG8
+// 或用 RGB10A2_UNORM: 法线 * 0.5 + 0.5 → [0,1]，精度够用
+```
+
+**材质参数打包**：粗糙度(R) + 金属度(G) + AO(B) 打进一张 `RGBA8`，甚至偷用 Albedo 的 Alpha 通道。
+
+##### 3.3 以 Unity 的 G-Buffer 为例（Built-in Deferred）
+
+| RT | 内容 | 格式 |
+|----|------|------|
+| RT0 | Albedo (RGB) + Occlusion (A) | ARGB32 / ARGB2101010 |
+| RT1 | Specular (RGB) + Smoothness (A) | ARGB32 |
+| RT2 | World Normal (RGB) + Sign(z) | ARGB2101010 |
+| RT3 | Emission + Lighting accumulation | ARGBHalf / ARGB64 |
+
+---
+
+#### 四、基本流程代码（OpenGL 风格，逐行可读）
+
+##### Step 1 — 建 G-Buffer（FBO + MRT）
+
+```cpp
+// === G-Buffer FBO ===
+GLuint gBufferFBO, gAlbedoSpec;
+glGenFramebuffers(1, &gBufferFBO);
+glBindFramebuffer(GL_FRAMEBUFFER, gBufferFBO);
+
+// --- RT0: World Position (或改用 depth 重建就省掉这张) ---
+GLuint gPosition;
+glGenTextures(1, &gPosition);
+glBindTexture(GL_TEXTURE_2D, gPosition);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
+             SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, nullptr);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                       GL_TEXTURE_2D, gPosition, 0);
+
+// --- RT1: Normal ---
+GLuint gNormal;
+glGenTextures(1, &gNormal);
+glBindTexture(GL_TEXTURE_2D, gNormal);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
+             SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, nullptr);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
+                       GL_TEXTURE_2D, gNormal, 0);
+
+// --- RT2: Albedo (RGB) + Specular Intensity (A) ---
+GLuint gAlbedoSpec;
+glGenTextures(1, &gAlbedoSpec);
+glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
+             SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2,
+                       GL_TEXTURE_2D, gAlbedoSpec, 0);
+
+// 告诉 OpenGL 我们要写 3 个 color attachment
+GLuint attachments[3] = { GL_COLOR_ATTACHMENT0,
+                           GL_COLOR_ATTACHMENT1,
+                           GL_COLOR_ATTACHMENT2 };
+glDrawBuffers(3, attachments);
+
+// 绑定 depth renderbuffer
+GLuint rboDepth;
+glGenRenderbuffers(1, &rboDepth);
+glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
+                       SCR_WIDTH, SCR_HEIGHT);
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                           GL_RENDERBUFFER, rboDepth);
+
+assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+```
+
+##### Step 2 — Geometry Pass Shader（只写 G-Buffer，**零光照**）
+
+```glsl
+// ======== geom.vert ========
+#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUV;
+
+out vec3 vWorldPos;
+out vec3 vNormal;
+out vec2 vUV;
+
+uniform mat4 uModel, uView, uProj;
+
+void main() {
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+    vWorldPos  = worldPos.xyz;
+    vNormal    = mat3(transpose(inverse(uModel))) * aNormal;
+    vUV        = aUV;
+    gl_Position = uProj * uView * worldPos;
+}
+```
+
+```glsl
+// ======== geom.frag ========
+#version 330 core
+layout(location = 0) out vec3 gPos;     // → COLOR_ATTACHMENT0
+layout(location = 1) out vec3 gNormal;  // → COLOR_ATTACHMENT1
+layout(location = 2) out vec4 gAlbedoSpec; // → COLOR_ATTACHMENT2
+
+in vec3 vWorldPos;
+in vec3 vNormal;
+in vec2 vUV;
+
+uniform sampler2D uAlbedoTex;
+
+void main() {
+    gPos   = vWorldPos;
+    gNormal = normalize(vNormal);           // 写世界空间法线
+    gAlbedoSpec.rgb = texture(uAlbedoTex, vUV).rgb;
+    gAlbedoSpec.a  = 1.0;  // specular intensity (或从 gloss map 读)
+}
+```
+
+##### Step 3 — 主循环：Geometry Pass
+
+```cpp
+glBindFramebuffer(GL_FRAMEBUFFER, gBufferFBO);
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+geomShader.use();
+for (auto& obj : scene.opaqueObjects) {
+    geomShader.setMat4("uModel", obj.modelMatrix);
+    obj.draw();
+}
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+```
+
+##### Step 4 — Lighting Pass（全屏 Quad + G-Buffer 采样）
+
+```cpp
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+lightingShader.use();
+
+// 把 G-Buffer 绑到 texture units
+glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition);
+glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);
+glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+
+lightingShader.setInt("gPosition",    0);
+lightingShader.setInt("gNormal",      1);
+lightingShader.setInt("gAlbedoSpec",  2);
+lightingShader.setVec3("uCamPos", camera.pos);
+
+RenderFullscreenQuad();  // 一个覆盖整个屏幕的四边形
+```
+
+```glsl
+// ======== lighting.frag ========
+#version 330 core
+out vec4 FragColor;
+
+uniform sampler2D gPosition;
+uniform sampler2D gNormal;
+uniform sampler2D gAlbedoSpec;
+uniform vec3 uCamPos;
+
+struct PointLight {
+    vec3 position;
+    vec3 color;
+    float radius;  // 或 range
+};
+#define MAX_LIGHTS 128
+uniform PointLight uLights[MAX_LIGHTS];
+uniform int uLightCount;
+
+void main() {
+    ivec2 texel = ivec2(gl_FragCoord.xy);
+    vec3 worldPos  = texelFetch(gPosition,   texel, 0).xyz;
+    vec3 N         = normalize(texelFetch(gNormal, texel, 0).xyz);
+    vec3 albedo    = texelFetch(gAlbedoSpec, texel, 0).rgb;
+
+    // ---- Ambient ----
+    vec3 result = albedo * 0.05;
+
+    // ---- Point Lights ----
+    for (int i = 0; i < uLightCount; ++i) {
+        vec3 Ldir = uLights[i].position - worldPos;
+        float d   = length(Ldir);
+        if (d > uLights[i].radius) continue;  // 快速拒掉
+
+        vec3 L = normalize(Ldir);
+        vec3 V = normalize(uCamPos - worldPos);
+        vec3 H = normalize(L + V);
+
+        float att = 1.0 - smoothstep(0.0, uLights[i].radius, d);
+        float diff = max(dot(N, L), 0.0);
+        float spec = pow(max(dot(N, H), 0.0), 64.0);
+
+        result += att * uLights[i].color *
+                  (diff * albedo + spec * 0.5);
+    }
+
+    FragColor = vec4(result, 1.0);
+}
+```
+
+> ⚠️ **生产环境不会真的用 `for` 循环遍历 128 盏灯**——会用 **Light Culling / Tiled Deferred（分块延迟）** 先算出每个 tile 受哪些光影响，再只累加相关光源。但这里展示的是最清晰的"概念正确"版本。
+
+##### Step 5 — 透明物体（Forward 补刀）
+
+```cpp
+// 恢复深度测试为 LESS，画透明物体（按距离从后往前排好序）
+glDepthMask(GL_FALSE);  // 不改深度
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+for (auto& t : scene.transparentObjects) t.drawForward();
+glDepthMask(GL_TRUE);
+glDisable(GL_BLEND);
+```
+
+---
+
+#### 五、主要使用场景 & 选型指南
+
+| 维度 | 延迟渲染 ✅ 适合 | ❌ 不适合 |
+|------|------------------|-----------|
+| **光源数量** | 多（数十～上千个动态光源） | 少（≤4 盏主光） |
+| **平台** | PC、PS/Xbox（带宽充裕） | 移动端 TBR（带宽紧张） |
+| **物体类型** | 主要是**不透明**物件 | 大量玻璃/水/粒子/半透 |
+| **材质多样性** | 单一/少数 PBR 材质体系 | 高度异质化材质（皮肤、布料、头发各需专属 BRDF） |
+| **AA 需求** | 可接受 TAA/FXAA/SMAA | 必须用高质量 MSAA |
+
+**典型应用场景**：
+
+- 🌃 **开放世界夜景** — 路灯、车灯、火把、霓虹到处都是
+- 🏚️ **室内多灯具场景** — 仓库、地下城、展厅
+- 🎮 **3A 引擎的标准路径** — UE / Unity 的 Deferred 渲染路径就是为此而生
+- 🖥️ **需要 SSAO / SSR 的后处理管线** — G-Buffer 已经白送你深度+法线
+
+---
+
+#### 六、变体与进阶方向
+
+| 变体 | 核心思路 | 解决什么 |
+|------|---------|---------|
+| **Deferred Lighting**（Light Pre-Pass） | G-Buffer 只存 Normal + Depth + SpecPower → 先累加光照到 LightBuffer → 第二遍贴材质 | 缩小 G-Buffer，支持更多材质 |
+| **Tiled Deferred / Clustered Deferred** | 把屏幕分 tile（如 16×16），每个 tile 建光源列表，光照时只遍历"真·影响"的光 | 砍掉 lighting pass 里的空转 |
+| **Visibility Buffer** | 不在 G-Buffer 存属性，只存 `(triangleID, barycentric)` → 从原始几何重建 | 极致省带宽，但算力换带宽 |
+
+---
+
+#### 一句话总结
+
+> **延迟渲染的本质 = 先深度测试，把活下来的那个表面的几何/材质信息记入 G-Buffer，再把光照降级为一个屏幕空间的"后处理"问题。** 它用**显存带宽**换了**光照可扩展性**，在"多光源 + 不透明主导"的现代游戏场景中是性价比最高的架构选择之一。
+
+如果你告诉我你关注的是 **OpenGL / Vulkan / Unity URP-HDRP / Unreal 的哪条管线**，我可以进一步把你关心的那套具体 G-Buffer 布局和 Pass 拆分方式精确到引擎实现层面。
 
 ## 20.2 Decal Rendering
 贴花渲染是3D世界中动态生成细节的一种常用方法。贴花常用于制作子弹孔、血迹、轮胎痕迹以及其它相似的项作为游戏中发生的事件。它们也可以用于设计师使用位于墙上的污迹、破损效果的纹理来丰富场景。
