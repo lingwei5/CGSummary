@@ -783,17 +783,137 @@ https://www.scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/
 inverse tranform sampling
 随机数生成的方式
 重要性采样
-variance reduction:增加实验次数 重要性采样 
+variance reduction:增加实验次数 重要性采样
 随机变量X,Y是随机变量X的函数,Y=f(X),则Y也是随机变量
 
 由离散随机变量的期望公式,随机变量的期望就是随机变量所有可能的值*取得该值的概率的求和,扩展到连续随机变量,只需要知道取得x的概率,也就是pdf在微小距离的积分,黎曼和
 ![alt text](离散随机变量及其函数的期望公式.png)
 ![alt text](连续随机变量的期望.png)
-![alt text](连续随机变量的函数的期望.png) 
+![alt text](连续随机变量的函数的期望.png)
 
 variance reduction:
 importance sampling：函数重要的地方增加采样点，防止丢失重要特征
 quasi-monte carlo
+
+### 逆变换采样（Inverse Transform Sampling）
+
+![alt text](<Inverse Transform Sampling.png>)  
+the inverse sampling method consists of drawing a sample with a uniform distribution between 0 and 1 which we can **interpret as the result of the CDF for some value of X**. **That X value is a random number drawn from the desired PDF**.
+
+https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/monte-carlo-methods-mathematical-foundations/inverse-transform-sampling-method.html 代码实现很有意思 并不是真的需要进行反函数变换，而是直接根据均匀采样的CDF值，找到CDF值对应的X值(可以在CDF的bin区间上分段线性插值)即可
+
+> 参考：[Inverse Transform Sampling](https://jzsherlock4869.github.io/2024/01/06/Inverse-Transform-Sampling/)
+
+#### 1. 万流归宗定理（Probability Integral Transform）
+
+又称为 Universality of the Uniform（万流齐一定理）。内容：对于一个连续随机变量，如果已知其 CDF 函数为 F(x)，则用该函数将随机变量映射 Y = F(X)，即可得到 [0,1] 上的均匀分布。
+
+**证明**：
+
+```
+设 Y = F(X)，其中 F 为 X 的 CDF
+
+由 CDF 定义：F(x) = P(X ≤ x)
+
+则 Y 的 CDF：
+    P(Y ≤ y) = P(F(X) ≤ y) = P(X ≤ F⁻¹(y)) = F(F⁻¹(y)) = y
+
+即 Y ~ Uniform(0, 1)，QED
+```
+
+> **关键点**：CDF 本身是单调递增函数，因此其反函数 F⁻¹ 存在；映射后的 Y 服从均匀分布。
+
+**著名应用**：直方图均衡化（Histogram Equalization）——通过图像本身统计信息（CDF）将其映射到接近均匀分布的状态，提高对比度。逆变换采样是该定理的另一个应用。
+
+#### 2. 逆变换采样
+
+逆变换采样（又称逆万流归宗），即万流归宗定理的**反向操作**：从均匀分布采样来生成一个已知 CDF 的随机变量。
+
+**核心思想**：将"生成指定分布的采样"转化为【均匀分布采样 + 函数变换映射】的过程，从而简化任务难度。用于映射均匀分布变量的函数就是目标分布的 CDF 的**反函数** F⁻¹。
+
+**算法步骤**：
+
+```
+1. 生成 u ~ Uniform(0, 1)
+2. 计算 x = F⁻¹(u)
+3. 则 x 服从 CDF 为 F 的目标分布
+```
+
+**证明**：
+
+```
+设 U ~ Uniform(0, 1)，令 X = F⁻¹(U)
+
+则 X 的 CDF：
+    P(X ≤ x) = P(F⁻¹(U) ≤ x) = P(U ≤ F(x)) = F(x)
+
+即 X 的 CDF 就是目标分布的 CDF，说明 X 可作为目标分布的采样。QED
+```
+
+**直观理解**：
+
+- CDF F(x) 表示"X ≤ x 的概率"，取值范围为 [0,1]
+- 均匀分布 U ~ Uniform(0,1) 给出一个 [0,1] 上的概率值
+- 求逆 F⁻¹(u) 即"已知累计概率为 u，反推对应的 x 值"
+- CDF 增长快的区域（PDF 大）→ u 落在该区域的概率大 → 采样到的 x 多（符合目标分布）
+
+#### 3. 特例：Box-Muller 变换（从均匀分布生成高斯分布）
+
+逆变换采样的一个经典特例，用于从均匀分布产生高斯分布样本。
+
+**算法**：
+
+```
+生成两组独立均匀分布：u₁, u₂ ~ Uniform(0, 1)
+
+施加变换：
+    z₁ = √(−2 ln u₁) · cos(2π u₂)
+    z₂ = √(−2 ln u₁) · sin(2π u₂)
+
+则 z₁, z₂ 为两组独立的标准正态分布 N(0,1) 随机变量
+```
+
+**为什么需要两组均匀分布？**
+
+高斯函数的 PDF 无法直接显式求定积分，因此无法直接求 CDF 的反函数。Box-Muller 通过以下技巧解决：
+
+1. 设置两个独立的高斯分布，整合成一个**二元高斯分布**
+2. 改写成**极坐标** (r, θ)，将二元高斯分解为两个独立参数：
+   - **角度 θ**：服从均匀分布 θ ~ Uniform(0, 2π)，直接由 u₂ 采样
+   - **模值 r**：通过逆变换采样获得（需计算 CDF 及其反函数），由 u₁ 采样
+3. 求解 r 的过程中采用了**二重积分单位圆面积**的 trick
+
+**参考证明**：
+
+- https://math.nyu.edu/~goodman/teaching/MonteCarlo2005/notes/GaussianSampling.pdf
+- https://medium.com/mti-technology/how-to-generate-gaussian-samples-3951f2203ab0
+
+**核心思想**：Box-Muller 不再采样横纵坐标 (x, y) 来获得二元高斯样本，而是对独立的极坐标参数 (r, θ) 进行采样——角度部分为均匀分布（简单），模值部分通过逆变换采样获得。
+
+#### 4. 逆变换采样的适用性与局限
+
+| 优点 | 局限 |
+|---|---|
+| 理论简单，证明严谨 | 需要已知 CDF 的**解析表达式** |
+| 对一维分布效果好 | 需要能求出 CDF 的**反函数 F⁻¹** |
+| 可生成任意连续分布 | 对高维分布不直接适用（需分解或结合其他方法） |
+| 是其他采样方法（如拒绝采样）的基础 | 对某些复杂分布（如高斯）需特殊技巧（如 Box-Muller） |
+
+#### 5. 在蒙特卡洛积分中的角色
+
+逆变换采样是蒙特卡洛方法中**生成任意分布样本的基础工具**：
+
+```
+蒙特卡洛积分需要按某 PDF p(x) 采样 → 需要生成服从 p(x) 的样本
+    ↓
+逆变换采样：u ~ Uniform(0,1) → x = F⁻¹(u) ~ p(x)
+    ↓
+代入 MC 估计器：F_N = (1/N) Σ f(xᵢ)/p(xᵢ)
+```
+
+- 当 p(x) 为均匀分布时，退化为最简单的均匀采样
+- 当 p(x) 匹配被积函数形状时，即**重要性采样**，可显著降低方差
+- 对复杂分布，可结合**拒绝采样**或 **Metropolis 采样**等方法
 
 ### reject sampling
 
@@ -806,7 +926,74 @@ quasi-monte carlo
 
 从直观的角度来看，显然，上下两个曲线(p(x)与M·q(x))所示之函数更加接近的地方接受概率较高，也即是更容易被接受，所以在这样的地方采到的点就会比较多，而在接受概率较低（即两个函数差距较大）的地方采到的点就会比较少，这也就保证了这个方法的有效性。
 
+### 逆变换采样与拒绝采样总结
 
+#### 1. 核心思想对比
+
+| 方法 | 核心思想 | 关键操作 |
+|---|---|---|
+| **逆变换采样** | 利用 CDF 的反函数直接映射 | u ~ Uniform(0,1) → x = F⁻¹(u) |
+| **拒绝采样** | 用易采样的分布 q(x) "罩住"目标分布 p(x)，通过接受/拒绝机制筛选 | 从 M·q(x) 采样 → 以 p(x)/(M·q(x)) 概率接受 |
+
+#### 2. 适用场景对比
+
+| 对比维度 | 逆变换采样 | 拒绝采样 |
+|---|---|---|
+| **前提条件** | 需已知 CDF 解析式 + 反函数 F⁻¹ 可求 | 只需已知 PDF 比例关系（可未归一化） |
+| **样本效率** | 100%（每个 u 都生成一个有效样本） | < 100%（部分样本被拒绝） |
+| **计算成本** | 低（一次映射） | 较高（需多次采样 + 接受/拒绝判断） |
+| **对复杂分布** | 受限于 F⁻¹ 是否可求 | 只要找到合适的 q(x) 即可 |
+| **典型应用** | CDF 易求的分布（指数、柯西、Weibull 等） | CDF 难求但 PDF 已知的分布 |
+
+#### 3. 两者关系
+
+```
+逆变换采样（基础方法）
+    ↓ 局限：CDF 反函数难求时失效
+拒绝采样（扩展方法）
+    - 借助一个"易采样的分布 q(x)"（通常用逆变换采样对 q 进行采样）
+    - 通过 M·q(x) ≥ p(x) 的包络 + 接受/拒绝机制，间接实现对 p(x) 的采样
+```
+
+**关键依赖**：拒绝采样中的 q(x) 通常就是通过**逆变换采样**来生成的（当 q 是均匀分布时尤为简单）。因此逆变换采样是更底层的基础工具，拒绝采样是建立在其之上的扩展技术。
+
+#### 4. 算法流程对比
+
+**逆变换采样**：
+```
+1. 生成 u ~ Uniform(0, 1)
+2. 计算 x = F⁻¹(u)
+3. 返回 x（100% 被接受）
+```
+
+**拒绝采样**：
+```
+1. 选择易采样的 q(x)，确定常数 M 使 M·q(x) ≥ p(x) 对所有 x 成立
+2. 生成 x ~ q(x)（通常用逆变换采样）
+3. 生成 u ~ Uniform(0, 1)
+4. 若 u ≤ p(x) / (M·q(x))，接受 x；否则拒绝，回到步骤 2
+5. 返回被接受的 x
+```
+
+#### 5. 选择建议
+
+| 场景 | 推荐方法 |
+|---|---|
+| 目标分布 CDF 易求且反函数可显式表示 | **逆变换采样**（效率最高） |
+| 目标分布 PDF 已知但 CDF 难求 | **拒绝采样**（需找到合适的包络 q） |
+| 高斯分布（CDF 无解析反函数） | **Box-Muller 变换**（逆变换采样的特例） |
+| 高维复杂分布 | 两者均不适用，考虑 **Metropolis 采样** 等马尔可夫链方法 |
+
+#### 6. 在蒙特卡洛积分中的定位
+
+```
+MC 积分需按 PDF p(x) 采样
+    ├─ p(x) 简单（CDF 可逆） → 逆变换采样
+    ├─ p(x) 复杂（CDF 不可逆） → 拒绝采样
+    └─ p(x) 高维/多峰 → Metropolis / MCMC
+```
+
+两种方法都是**生成服从指定分布样本的工具**，为 MC 估计器 F_N = (1/N)·Σ f(xᵢ)/p(xᵢ) 提供输入样本 xᵢ。采样质量直接影响估计的方差和收敛速度。
 
 ## 13.4 Metropolis Sampling
 MCMC Markov Chain MC
