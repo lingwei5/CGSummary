@@ -1186,6 +1186,276 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, width, height, 0, GL_RED_INTEGER, GL_UN
 3. **整数纹理**（`GL_R32UI`）直接返回整数，适合 ID 存储。
 4. **采样器类型必须匹配纹理格式**，否则行为未定义或返回错误数据。
 
+# Query
+
+## 1. 定义 / 目的 / 实现方式 / 归属
+
+- **定义**:Query Object(查询对象)是 OpenGL 提供的一种**异步统计机制**,用于让 CPU 查询 GPU 在执行某段命令期间产生的统计信息(如通过了深度测试的片元数、耗时、图元数等)。
+- **目的**:
+  1. 性能剖析(测某段 drawcall 的 GPU 耗时)
+  2. 可见性判断(遮挡查询,决定后续物体是否要绘制)
+  3. 流量统计(统计 vertex/fragment/primitive 的实际处理数量,定位 pipeline 瓶颈)
+- **实现方式**(异步三步走):
+  ```c
+  GLuint id;
+  glGenQueries(1, &id);
+  glBeginQuery(GL_SAMPLES_PASSED, id);   // 1. 开始统计
+  glDrawElements(...);                   //    包围一段 drawcall
+  glEndQuery(GL_SAMPLES_PASSED);         // 2. 结束统计
+  // ... 后续可以继续提交其他命令,GPU 在后台统计 ...
+  GLint result;
+  glGetQueryObjectiv(id, GL_QUERY_RESULT, &result);  // 3. 取结果(可能阻塞)
+  glDeleteQueries(1, &id);
+  ```
+  - **关键点**:Query 是**异步**的——`glEndQuery` 立即返回,统计在 GPU 端进行。CPU 只有在调用 `glGetQueryObjectiv(GL_QUERY_RESULT)` 时才尝试读取结果,若结果未就绪则**阻塞等待**。
+- **归属**:Query Object 是 **OpenGL/D3D 等图形 API 的实现机制**,不是图形学理论概念。图形学只关心"可见性"、"性能"等问题,Query 是 GPU 厂商为解决"CPU 如何得知 GPU 状态"而设计的 API 层设施。Vulkan 中对应 `vkQueryPool`,D3D12 中对应 `ID3D12QueryHeap`。
+
+## 2. 相关 API 总结
+
+### 2.1 Query Object 生命周期
+
+| API | 说明 |
+|-----|------|
+| `glGenQueries(n, *ids)` | 生成 n 个 query object |
+| `glDeleteQueries(n, *ids)` | 删除 |
+| `glIsQuery(id)` | 是否是合法 query |
+
+### 2.2 查询类型(target)
+
+| target | 统计内容 |
+|--------|---------|
+| `GL_SAMPLES_PASSED` | 通过深度/模板测试的样本数(遮挡查询) |
+| `GL_ANY_SAMPLES_PASSED` | 是否有任意样本通过(布尔版,更快) |
+| `GL_ANY_SAMPLES_PASSED_CONSERVATIVE` | 同上,保守版(可能误判为通过,但更快) |
+| `GL_PRIMITIVES_GENERATED` | (TF/stream)生成的图元数 |
+| `GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN` | TF 实际写入 buffer 的图元数 |
+| `GL_TIME_ELAPSED` | 包围段内的 GPU 耗时(纳秒) |
+| `GL_TIMESTAMP` | 时间戳(配合 `glQueryCounter` 使用) |
+| `GL_VERTICES_SUBMITTED` / `GL_PRIMITIVES_SUBMITTED` / `GL_VERTEX_SHADER_INVOCATIONS` / `GL_FRAGMENT_SHADER_INVOCATIONS` / `GL_COMPUTE_SHADER_INVOCATIONS` / `GL_GEOMETRY_SHADER_INVOCATIONS` / `GL_TESS_CONTROL_SHADER_PATCHES` / `GL_TESS_EVALUATION_SHADER_INVOCATIONS` | Pipeline Statistics(GL 4.6) |
+
+### 2.3 开始 / 结束查询
+
+| API | 说明 |
+|-----|------|
+| `glBeginQuery(target, id)` | 开始统计(target 不能是 TIMESTAMP) |
+| `glEndQuery(target)` | 结束统计 |
+| `glQueryCounter(id, GL_TIMESTAMP)` | 在当前命令流位置打时间戳(不需 begin/end) |
+
+### 2.4 读取结果
+
+| API | 是否阻塞 | 说明 |
+|-----|---------|------|
+| `glGetQueryObjectiv(id, pname, *params)` | 阻塞 | pname: `GL_QUERY_RESULT` 或 `GL_QUERY_RESULT_AVAILABLE` |
+| `glGetQueryObjectuiv` | 阻塞 | 无符号版 |
+| `glGetQueryObjecti64v` | 阻塞 | 64 位有符号(用于 timestamp) |
+| `glGetQueryObjectui64v` | 阻塞 | 64 位无符号 |
+| `glGetQueryBufferObjectiv(id, buffer, pname, offset)` | **不阻塞** | 把结果写入 buffer 对象,后续 shader/CPU 异步读 |
+| `glGetQueryBufferObjecti64v` 等 | 不阻塞 | 64 位版 |
+
+> **避免阻塞的最佳实践**:用 `GL_QUERY_RESULT_AVAILABLE` 先轮询,或用 `glGetQueryBufferObject*` 写入 buffer 后由 GPU 自己消费(配合 conditional render / compute shader)。
+
+### 2.5 条件渲染(基于 query)
+
+| API | 说明 |
+|-----|------|
+| `glBeginConditionalRender(id, mode)` | 根据 query id 决定是否执行后续 drawcall |
+| `glEndConditionalRender()` | 结束 |
+
+| mode | 行为 |
+|------|------|
+| `GL_QUERY_WAIT` | 等待 query 结果再决定是否绘制 |
+| `GL_QUERY_NO_WAIT` | 不等待,若结果未就绪则照常绘制(用于避免 stall) |
+| `GL_QUERY_BY_REGION_WAIT` | 仅等待视锥区域内的结果 |
+| `GL_QUERY_BY_REGION_NO_WAIT` | 区域版不等待 |
+
+### 2.6 典型用法
+
+**性能剖析**(测一段 drawcall 耗时):
+```c
+GLuint q; glGenQueries(1, &q);
+glBeginQuery(GL_TIME_ELAPSED, q);
+  DrawScene();
+glEndQuery(GL_TIME_ELAPSED);
+GLint64 ns;
+glGetQueryObjecti64v(q, GL_QUERY_RESULT, (GLint64*)&ns);  // 纳秒
+```
+
+**遮挡查询**(物体是否可见):
+```c
+GLuint q; glGenQueries(1, &q);
+glBeginQuery(GL_ANY_SAMPLES_PASSED, q);
+  DrawBoundingBox(object);   // 先画 bbox
+glEndQuery(GL_ANY_SAMPLES_PASSED);
+// 不等待,直接提交条件渲染
+glBeginConditionalRender(q, GL_QUERY_NO_WAIT);
+  DrawObject(object);        // 只在 bbox 通过深度测试时才真正画
+glEndConditionalRender();
+```
+
+**Pipeline 瓶颈定位**(GL 4.6):
+```c
+GLuint q[2]; glGenQueries(2, q);
+glBeginQuery(GL_VERTICES_SUBMITTED, q[0]);
+  Draw();
+glEndQuery(GL_VERTICES_SUBMITTED);
+glBeginQuery(GL_FRAGMENT_SHADER_INVOCATIONS, q[1]);
+  Draw();  // 同一次 draw
+glEndQuery(GL_FRAGMENT_SHADER_INVOCATIONS);
+// 对比两个结果,判断 vertex 还是 fragment 占主导
+```
+
+# Transform Feedback
+
+## 1. 定义 / 目的 / 实现方式 / 归属
+
+- **定义**:Transform Feedback(TF)是 OpenGL 提供的**顶点捕获机制**——把 vertex/geometry shader 输出的顶点数据**写入 buffer 对象**,而不是送入光栅化阶段。
+- **目的**:
+  1. **GPU 端动画**:GPU 蒙皮、粒子模拟,结果存入 buffer,后续直接用,避免回读 CPU
+  2. **多 pass 渲染**:第一个 pass 算出变形后的顶点,第二个 pass 用变形结果绘制
+  3. **粒子系统**:用 TF 记录粒子当前状态,下一帧用上一帧状态积分
+  4. **减少 CPU↔GPU 往返**:复杂几何处理(如曲面细分)一次性在 GPU 完成,持久化结果
+- **实现方式**(三步走):
+  ```c
+  // 1. 配置:指定要捕获哪些 attribute,绑定 TF buffer
+  const char* varyings[] = {"gl_Position", "v_normal", "v_uv"};
+  glTransformFeedbackVaryings(prog, 3, varyings, GL_INTERLEAVED_ATTRIBS);
+  glLinkProgram(prog);  // 必须重新链接
+
+  // 2. 绑定 buffer
+  glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
+
+  // 3. 进入 TF 模式(跳过光栅化)
+  glEnable(GL_RASTERIZER_DISCARD);
+  glBeginTransformFeedback(GL_TRIANGLES);
+    glDrawArrays(...);      // 顶点被写入 tfBuffer
+  glEndTransformFeedback();
+  glDisable(GL_RASTERIZER_DISCARD);
+  ```
+- **归属**:TF 是 **OpenGL 特有的命名**(D3D 叫 Stream Output,Vulkan 也叫 Transform Feedback,Metal 叫 Transform Feedback)。底层思想——"把 shader 中间结果持久化到 buffer"——是现代 GPU 通用能力,但 API 形态是图形 API 各自定义的。TF 已被 **compute shader** 逐步取代(后者更灵活,可随机读写),TF 在 GL 4.0 后基本停止演进。
+
+## 2. 相关 API 总结
+
+### 2.1 配置捕获的 varying
+
+| API | 说明 |
+|-----|------|
+| `glTransformFeedbackVaryings(prog, count, *names, bufferMode)` | 指定要捕获哪些 varying |
+| `glGetTransformFeedbackVarying(prog, idx, bufSize, *length, *size, *type, *name)` | 查询 varying 信息 |
+
+| bufferMode | 说明 |
+|-----------|------|
+| `GL_INTERLEAVED_ATTRIBS` | 所有 varying 写入**同一个** buffer,紧密排列 |
+| `GL_SEPARATE_ATTRIBS` | 每个 varying 绑定到**独立** buffer |
+
+> 注意:`glTransformFeedbackVaryings` 后**必须重新 `glLinkProgram`**,否则不生效。
+
+### 2.2 绑定 TF buffer
+
+| API | 说明 |
+|-----|------|
+| `glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, index, buffer)` | 绑定到固定绑定点 |
+| `glBindBufferRange(GL_TRANSFORM_FEEDBACK_BUFFER, index, buffer, offset, size)` | 绑定 buffer 的子区间 |
+
+`index` 对应 `GL_SEPARATE_ATTRIBS` 下的 varying 顺序。
+
+### 2.3 开始 / 结束 / 暂停
+
+| API | 说明 |
+|-----|------|
+| `glBeginTransformFeedback(primitiveMode)` | 进入 TF 模式,primitiveMode 必须与 drawcall 的 mode 兼容 |
+| `glEndTransformFeedback()` | 退出 TF 模式 |
+| `glPauseTransformFeedback()` | 暂停(可渲染非 TF 物体后再恢复) |
+| `glResumeTransformFeedback()` | 恢复 |
+
+| primitiveMode 兼容性 | 允许的 drawcall mode |
+|---------------------|---------------------|
+| `GL_POINTS` | `GL_POINTS` |
+| `GL_LINES` | `GL_LINES` / `GL_LINE_STRIP` / `GL_LINE_LOOP` |
+| `GL_TRIANGLES` | `GL_TRIANGLES` / `GL_TRIANGLE_STRIP` / `GL_TRIANGLE_FAN` |
+
+### 2.4 用 TF 结果绘制
+
+| API | 说明 |
+|-----|------|
+| `glDrawTransformFeedback(mode, id)` | 用 TF buffer 中捕获的顶点数绘制(无需知道 count) |
+| `glDrawTransformFeedbackInstanced(mode, id, instancecount)` | 实例化版 |
+| `glDrawTransformFeedbackStream(mode, id, stream)` | 指定 stream(GS 多流输出) |
+| `glDrawTransformFeedbackInstancedStream(mode, id, instancecount, stream)` | 上述组合 |
+
+`id` 是 TF object(见下),用于查找"上次写入了多少顶点"。
+
+### 2.5 TF Object(GL 4.0+)
+
+| API | 说明 |
+|-----|------|
+| `glGenTransformFeedbacks(n, *ids)` | 生成 TF object |
+| `glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, id)` | 绑定(封装 buffer 绑定状态) |
+| `glDeleteTransformFeedbacks(n, *ids)` | 删除 |
+| `glIsTransformFeedback(id)` | 查询 |
+
+TF object 封装了"哪些 buffer 绑定到哪些绑定点",避免每次切换都要重新绑。
+
+### 2.6 查询 TF 写入量
+
+| API | 说明 |
+|-----|------|
+| `glBeginQuery(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, q)` + `glEndQuery` | 统计实际写入的图元数 |
+| `glBeginQuery(GL_PRIMITIVES_GENERATED, q)` + `glEndQuery` | 统计 GS/VS 生成的图元数(含未写入的) |
+
+两者差值可用于判断是否有图元因 buffer 满而被丢弃。
+
+### 2.7 与 Rasterizer Discard 配合
+
+TF 通常配合 `glEnable(GL_RASTERIZER_DISCARD)` 跳过光栅化,实现"纯顶点处理 pass"。若不 discard,则顶点同时被捕获并光栅化(可用于 debug 可视化)。
+
+### 2.8 典型用法
+
+**GPU 粒子系统**(无需 CPU 参与):
+```c
+// Pass 1: 更新粒子位置,写入 TF buffer
+glEnable(GL_RASTERIZER_DISCARD);
+glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, particleBufferB);
+glBeginTransformFeedback(GL_POINTS);
+  glUseProgram(updateShader);
+  glBindVertexArray(particleBufferA_vao);
+  glDrawArrays(GL_POINTS, 0, N);    // 读 A 写 B
+glEndTransformFeedback();
+glDisable(GL_RASTERIZER_DISCARD);
+
+// Pass 2: 渲染粒子
+glUseProgram(renderShader);
+glBindVertexArray(particleBufferB_vao);
+glDrawTransformFeedback(GL_POINTS, tfId);  // 用 B 中刚写入的顶点数
+
+// 交换 A、B(双缓冲)
+swap(particleBufferA, particleBufferB);
+```
+
+**GPU 蒙皮**:
+```c
+// Pass 1: 蒙皮计算
+glEnable(GL_RASTERIZER_DISCARD);
+glBeginTransformFeedback(GL_TRIANGLES);
+  glUseProgram(skinShader);
+  glDrawElements(GL_TRIANGLES, indexCount, ...);  // 输出变形后顶点
+glEndTransformFeedback();
+
+// Pass 2: 用变形后的顶点正常绘制
+glDrawTransformFeedback(GL_TRIANGLES, tfId);
+```
+
+## 3. Query 与 TF 的关系
+
+| 维度 | Query | Transform Feedback |
+|------|-------|-------------------|
+| 用途 | 统计 GPU 内部数据 | 捕获 shader 输出顶点 |
+| 数据流向 | GPU → CPU(或 GPU buffer) | GPU → GPU buffer(再由 GPU 使用) |
+| 是否阻塞 CPU | 可能(取结果时) | 不阻塞 |
+| 异步性 | 是 | 是 |
+| 配套使用 | `GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN` 查询可统计 TF 实际写入量 | — |
+| 现代替代 | Vulkan `vkQueryPool` | compute shader + SSBO |
+
+> Query 与 TF 经常配合:TF 写入 buffer 的同时用 Query 统计写入了多少图元,后续 drawcall 用这个数量驱动 `glDrawTransformFeedback`。
 
 # per fragment op
 1. scissor
@@ -1535,6 +1805,145 @@ https://www.khronos.org/opengl/wiki/OpenGL_and_multithreading
 2. gl 2.1引入了PBO,异步传输数据
 
 # 优化(OpenGL方面的优化)
+
+## Driver Overhead（驱动开销）
+
+### 一句话定义
+
+**Driver overhead** = CPU 在发起一次 GPU 命令时，**为准备、验证、翻译、提交这条命令所付出的额外代价**——这部分时间既不渲染画面，也不做计算，纯粹消耗在 CPU 端的 OpenGL 驱动代码里。
+
+### 一、开销从哪来
+
+每次调用 `glDraw*` 时，CPU 实际做了远比"发一条命令"多得多的事情：
+
+```
+CPU 侧（驱动开销发生在这里）
+┌─────────────────────────────────────┐
+│ 1. 参数校验    检查 mode/count/IBO 是否合法          │
+│ 2. 状态检查    当前 VAO/VBO/shader/blend 是否完整    │
+│ 3. 状态追踪    驱动内部 dirty flag 比对、缓存失效    │
+│ 4. 命令翻译    把 GL 调用翻译成 GPU 私有指令码        │
+│ 5. 命令打包    放入命令缓冲区，可能触发 flush        │
+│ 6. 同步点      某些查询/回读会强制 CPU 等待 GPU       │
+└─────────────────────────────────────┘
+           ↓ 提交到 GPU
+┌─────────────────────────────────────┐
+│ GPU 侧：执行 drawcall（真正的渲染工作）              │
+└─────────────────────────────────────┘
+```
+
+**关键点**：driver overhead 发生在 CPU，与 GPU 性能无关。GPU 再快，CPU 卡在驱动里也无济于事。
+
+### 二、典型数值感知
+
+| 场景 | 单次 drawcall 的 CPU 开销 |
+|------|--------------------------|
+| 简单 drawcall | ~5~20 μs |
+| 带 uniform 更新 + 状态切换 | ~30~100 μs |
+| `glReadPixels` 同步回读 | **几 ms ~ 几十 ms**（致命） |
+| 60 FPS 帧预算 | 16.6 ms |
+
+如果每帧 1000 个 drawcall × 20 μs = **20 ms**，已经超帧预算——这就是为什么 drawcall 数量是实时渲染的核心指标。
+
+### 三、开销的六大来源
+
+#### 1. 参数校验
+
+```c
+glDrawElements(GL_TRIANGLES, count, type, indices);
+```
+驱动必须检查：
+- `count` 是否非负
+- `type` 是否合法枚举
+- 当前 VAO 是否绑定
+- IBO 是否够大，`indices + count` 不越界
+- shader 是否链接成功
+
+#### 2. 状态追踪（dirty tracking）
+
+驱动内部维护"当前状态机"，每次 `glBind*` / `glUniform*` 都会**标记某项状态为 dirty**，下一次 drawcall 时统一检查并提交变更。状态切换越频繁，dirty 检查越耗时。
+
+#### 3. 命令翻译
+
+OpenGL 是高层 API，GPU 只懂底层指令码。驱动要把 `glDrawElements(...)` 翻译成硬件 command buffer 中的若干条寄存器写入 + 一条 draw 命令。不同 GPU 厂商（NVIDIA / AMD / Intel / Qualcomm）翻译逻辑不同。
+
+#### 4. 命令缓冲区管理
+
+驱动维护一个 ring buffer 存放待提交命令。当 buffer 满或遇到同步点时，会强制 `flush` 并可能让 CPU 等待 GPU 消费完——这就是 **pipeline stall**。
+
+#### 5. 同步点（最致命）
+
+以下操作会强制 CPU 等待 GPU：
+
+| 操作 | 为什么慢 |
+|------|---------|
+| `glFinish()` | 等 GPU 执行完所有命令 |
+| `glReadPixels()` | 等待 GPU 把像素写到可读内存 |
+| `glGetQueryObjectiv(...)` 查询非 ready 结果 | 等 GPU 跑完查询 |
+| 访问被 GPU 占用的 buffer | 等待 GPU 释放 |
+
+#### 6. 资源驻留检查
+
+现代驱动（特别是 bindless / D3D12 风格）会检查纹理/buffer 是否在 GPU 显存中，不在则触发传输。OpenGL 隐藏了这件事，但开销仍在。
+
+### 四、为什么是 OpenGL 的"原罪"
+
+OpenGL 的设计假设是**每次 drawcall 前重新检查整个状态机**——这在 90 年代硬件上合理，在现代 GPU 上却成了负担：
+
+| API | 驱动开销 |
+|-----|---------|
+| **OpenGL** | 高（每帧全状态校验） |
+| **Vulkan / D3D12** | 极低（状态预先打包成 PSO，CPU 只提交命令） |
+| **Metal** | 低（PSO + encoder 模型） |
+
+NVIDIA 有一个著名估算：**同样的渲染，Vulkan 的 CPU 开销约为 OpenGL 的 1/10**，主要差距就在 driver overhead。
+
+### 五、如何降低 driver overhead
+
+#### 1. 减少 drawcall 数量
+
+| 方法 | 效果 |
+|------|------|
+| `glMultiDraw*` | N 次 draw → 1 次 |
+| `glDraw*Instanced` | N 个相同物体 → 1 次 |
+| `glMultiDrawElementsIndirect` | N 次任意 draw → 1 次 |
+| 合并 mesh（纹理数组 + BaseVertex） | 多个 mesh → 1 个 VBO |
+
+#### 2. 减少状态切换
+
+| 方法 | 说明 |
+|------|------|
+| 按 shader 分组绘制 | 减少 `glUseProgram` |
+| 用纹理数组代替多纹理 | 减少 `glBindTexture` |
+| 用 UBO 代替多次 `glUniform` | 一次 `glBindBufferRange` 更新整块 |
+| AZDO 技巧（bindless, multidrawindirect） | 把状态切换降到最低 |
+
+#### 3. 避免同步点
+
+| 方法 | 说明 |
+|------|------|
+| 用 PBO 异步回读 | `glReadPixels` 写入 PBO，下一帧再读 |
+| 用 fence 异步查询 | `glFenceSync` + `glClientWaitSync` 延迟等待 |
+| 三缓冲 buffer（buffer orphaning） | 避免等 GPU 释放 |
+| `glMapBufferRange` 用 `GL_MAP_UNSYNCHRONIZED_BIT` | 跳过同步（自己保证安全） |
+
+#### 4. 使用 AZDO（Approaching Zero Driver Overhead）
+
+NVIDIA 提出的一组技术组合：
+- Persistent mapped buffers（CPU/GPU 共享内存）
+- Bindless textures（用 handle 代替 bind）
+- Multi-draw-indirect（GPU 端发起 drawcall）
+- NV_command_list（把状态序列化）
+
+目标：把 CPU 开销降到几乎为零，让 GPU 成为唯一瓶颈。
+
+### 六、一句话记忆
+
+> **Driver overhead = CPU 替你做了大量看不见的准备工作**。
+> Drawcall 看起来是一行代码，背后是校验、翻译、打包、提交一整套流程。
+> 实时渲染优化的核心就是：**让 CPU 少做这些隐形工作，让 GPU 多做真正的渲染**。
+
+
 https://paroj.github.io/gltut/Basic%20Optimization.html
 ## 可能的优化技巧
 传给gpu之前数据优化: 
@@ -1588,9 +1997,80 @@ Vsync is controlled by the window-system specific extensions GLX_EXT_swap_contro
 1. fragment processing:增大2X分辨率,如果耗时也增大2倍甚至以上,明显这就是瓶颈,否则fragment 不是瓶颈
 2. vertex processing 如果fragment不是瓶颈,那vertex很可能是瓶颈,关掉fragment,测试 To turn off fragment processing, simply glEnable(GL_RASTERIZER_DISCARD​).
 3. cpu 如果GPU不是瓶颈,那cpu就是瓶颈
-4. 如果一些瓶颈无法解决,那就不要加重类似瓶颈,比如vertex是瓶颈,那就把一些功能移到fragment里去做
+4. 瓶颈转移原则: 如果一些瓶颈无法解决,那就不要加重类似瓶颈,比如vertex是瓶颈,那就把一些功能移到fragment里去做。更一般地:当某阶段是瓶颈且无法直接优化时,把工作转移到**非瓶颈阶段**:
+   - vertex 慢 → 把逐顶点计算移到 fragment(更稀疏的属性插值)
+   - fragment 慢 → 把逐片元计算移到 vertex(牺牲精度换速度)
+   - CPU 慢 → 把计算移到 GPU(compute shader)
+   - GPU 慢 → 把计算移到 CPU(仅限低频数据)
 
+### 更精确的测量手段
+排除法(改分辨率/关光栅化)只能定性,以下手段可直接定量:
+1. **GPU Timer Query**: `glQueryCounter(GL_TIMESTAMP)` + `glGetQueryObjecti64v` 直接拿到 GPU 端某段 drawcall 的纳秒级耗时
+2. **Pipeline Statistics Query**: `GL_PRIMITIVES_GENERATED` / `GL_VERTICES_SUBMITTED` / `GL_FRAGMENT_SHADER_INVOCATIONS` 拿到每个阶段实际处理了多少工作
+3. **Occlusion Query**: `glBeginQuery(GL_SAMPLES_PASSED)` 测可见片元数,判断 overdraw
+4. **Vendor Tools**: NVIDIA Nsight / RenderDoc / Intel GPA 可视化每个阶段耗时,无需改代码
 
+### GPU Pipeline 6 阶段细化瓶颈定位
+实际 GPU pipeline 有 6 个阶段都可能成为瓶颈(不只是 vertex/fragment):
+
+| 阶段是瓶颈 | 测试方法 |
+|-----------|---------|
+| Input Assembler | 减小顶点格式(去掉法线/UV),看是否变快 |
+| Vertex Shader | 简化 vertex shader 到空壳 |
+| Tessellation | 降低 tess level |
+| Geometry Shader | 移除 GS |
+| Rasterizer | 渲染更少但更大的三角形 |
+| Fragment Shader | 降分辨率(已有方法) |
+| Output Merger | 关 blending / 关 depth write |
+
+### 各阶段具体优化技术
+
+#### Vertex Shader 瓶颈优化
+| 技术 | 说明 |
+|------|------|
+| LOD(Level of Detail) | 远处用低面数 mesh |
+| Vertex Buffer 合并 | 减少 VBO 切换,配合 BaseVertex |
+| GPU skinning | 蒙皮动画放 compute shader,避免每帧 CPU 计算 |
+| Index Buffer 优化 | 用 `glDrawElements` 复用顶点 |
+| Vertex Cache 优化 | 用 Tipsify / TomF 算法重排索引,提升 post-T&L cache 命中率 |
+| 减少 attribute 数量 | 法线/切线可从 position 导出 |
+
+#### Fragment Shader 瓶颈优化
+| 技术 | 说明 |
+|------|------|
+| Early-Z / Z-Prepass | 先用简单 shader 写深度,再渲染正式场景,触发 early-Z 剔除 |
+| LOD for shader | 远处用简化 shader |
+| 半分辨率渲染 | 后处理/光照在半分辨率下做 |
+| MRT(多渲染目标) | G-Buffer 一次写完,避免多次 pass |
+| Branching 优化 | 避免动态分支,用 mix/step 代替 if |
+| Texture 优化 | 用 mipmap、texture compression(ASTC/BCn) |
+| 减少 overdraw | 前向渲染用排序(前→后),延迟渲染彻底消除 |
+
+#### Rasterizer / IA 瓶颈优化
+| 技术 | 说明 |
+|------|------|
+| Meshlets | 把大 mesh 切成小块,配合 mesh shader |
+| Back-face culling | `glEnable(GL_CULL_FACE)` |
+| Frustum culling | CPU 端剔除视锥外物体 |
+| Occlusion culling | 用 Hi-Z 或查询遮挡体 |
+| Triangle size 控制 | 太小的三角形浪费 setup,合并或 LOD |
+
+#### CPU 瓶颈优化(driver overhead)
+参考 AZDO(Approaching Zero Driver Overhead)技术:
+- MultiDraw / Instanced / Indirect 减少 drawcall 数量
+- Persistent mapped buffers 实现 CPU/GPU 共享内存
+- Bindless textures 用 handle 代替 bind
+- 减少 state change(按 shader 分组、纹理数组、UBO)
+
+### 现代渲染优化范式
+| 范式 | 思想 |
+|------|------|
+| GPU-Driven Rendering | CPU 只提交一次 indirect draw,可见性剔除/LOD 全在 GPU compute 完成 |
+| Visibility Buffer | 替代 G-Buffer,只存 triangleID,shader 阶段再求值属性 |
+| Mesh Shaders | 绕开 IA,直接在 compute-like 阶段处理 meshlet |
+| Bindless Everything | 用 handle 代替 bind,消除状态切换 |
+| Variable Rate Shading(VRS) | 按区域降采样 fragment |
+| Sampler Feedback | GPU 告诉 CPU 哪些 texture mip 真正被用 |
 
 sinc函数跟box函数互为逆傅里叶变换
 
