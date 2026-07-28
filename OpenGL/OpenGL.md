@@ -1198,14 +1198,177 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, width, height, 0, GL_RED_INTEGER, GL_UN
 
 # 命令辨别 可以通过reference以及参数列表进行对比
 ## DrawCall 
-1. glDrawArray glDrawElement 绘制命令的基础
-2. glMultiDraw* glMultiDrawArrays(	GLenum mode, const GLint * first, const GLsizei * count, GLsizei drawcount);按照mode类型，绘制drawcount次(也就是相当于drawcount次DrawArray)从first数组里作为第一个，对应count数组的个数个图元, **一次绘制多个模型**
-3. glDraw*Instanced GLenum mode, GLint first, GLsizei count, GLsizei instancecount,**同一个模型绘制instancecount次**(instancecount个实例)
-4. glDraw*InstancedBaseInstance：解释不明，可能是每个实例进行偏移
-5. glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, void *indices, GLint basevertex) 就是DrawElements，只是每个索引值都基于basevertex(也就是相对于dtawelements偏移basevertex， **index[i]+basevertex**)
-6. glDrawArrayIndirect == glDrawArraysInstancedBaseInstance  glDrawElementsIndirect== glDrawElementsInstancedBaseVertexBaseInstance,就是渲染的参数不是直接作为实参传给drawcall,而是封装成一个struct,传递这个struct对象到indirect类函数
-7. glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void * indices)就是加了起止点范围的drawelements glDrawRangeElementsBaseVertex 
-8. glPrimitiveRestartIndex(index) 把多个模型的索引放到element数组,并添加合适的重启索引,就可以调用一次drawelement完成多个物体的绘制,功能同multidraw,但是不需要存储每个物体的first count数组
+
+> OpenGL 所有绘制命令都以 `glDraw*` 开头。区分它们的关键在于四个维度：
+> 1. **数据来源**：直接顶点数组（Arrays）还是索引数组（Elements）
+> 2. **批处理方式**：单次绘制、多次绘制（MultiDraw）、实例化（Instanced）、间接（Indirect）
+> 3. **顶点偏移**：是否带 BaseVertex / BaseInstance
+> 4. **索引范围**：是否限制索引上下界（Range）
+
+### 1. 基础绘制命令
+
+| 命令 | 签名 | 说明 |
+|------|------|------|
+| `glDrawArrays` | `(mode, first, count)` | 从 `first` 开始连续取 `count` 个顶点，按 `mode` 拼成图元 |
+| `glDrawElements` | `(mode, count, type, *indices)` | 从 `indices` 数组取 `count` 个索引，按 `type`（GL_UNSIGNED_SHORT/INT）解析 |
+
+- **Arrays**：顶点顺序连续，无需索引缓冲（IBO）。适合规整网格。
+- **Elements**：通过索引复用顶点，节省显存。适合共享顶点的网格（如立方体只需 8 顶点）。
+
+```c
+// 直接绘制 6 个顶点构成 2 个三角形
+glDrawArrays(GL_TRIANGLES, 0, 6);
+
+// 用索引绘制：indices = [0,1,2, 2,3,0]
+glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+```
+
+### 2. MultiDraw 系列：一次绘制多个不同模型
+
+```c
+void glMultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+void glMultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const*indices, GLsizei drawcount);
+```
+
+- 等价于循环调用 `drawcount` 次 `glDrawArrays/Elements`，但**只发起一次 driver call**。
+- 每个模型有自己的 `first[i]` / `count[i]`，模型之间顶点数据连续存放在同一个 VBO 中。
+- 适合：**同一 shader 渲染多个不同顶点范围的模型**（例如一组不同形状的粒子）。
+
+```c
+GLint first[] = {0,   100, 200};
+GLsizei count[] = {100, 100, 50};
+glMultiDrawArrays(GL_TRIANGLES, first, count, 3);  // 一次画 3 个模型
+```
+
+### 3. Instanced 系列：同一模型绘制多次
+
+```c
+void glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instancecount);
+void glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
+```
+
+- **同一个模型绘制 `instancecount` 次**，每次称为一个"实例"。
+- 配合 `glVertexAttribDivisor(loc, 1)` 让某些 attribute 按实例更新（每实例一个变换矩阵、颜色等）。
+- 适合：**渲染大量相同几何但不同位置/颜色的物体**（草地、树木、粒子团）。
+
+```c
+// 用同一个 cube mesh 绘制 1000 个实例
+glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, 1000);
+```
+
+#### MultiDraw vs Instanced 的区别
+
+| 维度 | MultiDraw | Instanced |
+|------|-----------|-----------|
+| 几何数据 | 每个模型不同（多个 first/count） | 同一模型 |
+| 实例数 | `drawcount` 个不同模型 | `instancecount` 个相同模型 |
+| 适用 | 多种不同网格 | 一种网格多次重复 |
+| per-instance attribute | 不支持 | 支持（divisor） |
+
+### 4. BaseVertex / BaseInstance 系列
+
+```c
+void glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, void *indices, GLint basevertex);
+void glDrawArraysInstancedBaseInstance(GLenum mode, GLint first, GLsizei count, GLsizei instancecount, GLuint baseinstance);
+void glDrawElementsInstancedBaseVertex(GLenum mode, GLsizei count, GLenum type, void *indices, GLsizei instancecount, GLint basevertex);
+void glDrawElementsInstancedBaseVertexBaseInstance(...);
+```
+
+- **BaseVertex**：所有索引值加上 `basevertex` 偏移，即 `实际索引 = index[i] + basevertex`。
+  - 用途：多个模型合并到同一 VBO，每个模型有自己的索引段，通过 BaseVertex 指定起始偏移，索引数据可以保持"相对"值。
+- **BaseInstance**：实例化绘制时，per-instance attribute 的起始偏移。
+  - 用途：让不同 batch 共享同一个 per-instance buffer，通过 BaseInstance 跳到该 batch 对应的实例数据段。
+
+```c
+// 模型 B 的顶点存放在 VBO 偏移 500 处，索引仍用 0~99
+glDrawElementsBaseVertex(GL_TRIANGLES, 100, GL_UNSIGNED_INT, 0, 500);
+```
+
+### 5. Indirect 系列：参数从 GPU buffer 读取
+
+```c
+void glDrawArraysIndirect(GLenum mode, const void *indirect);
+void glDrawElementsIndirect(GLenum mode, GLenum type, const void *indirect);
+```
+
+- `indirect` 指向一个结构体（绑定到 `GL_DRAW_INDIRECT_BUFFER`），结构体内含所有 drawcall 参数。
+- **CPU 不需要传参**，参数可由 GPU compute shader 生成 → 实现 GPU-driven rendering。
+- `glDrawArraysIndirect` ≡ `glDrawArraysInstancedBaseInstance`
+- `glDrawElementsIndirect` ≡ `glDrawElementsInstancedBaseVertexBaseInstance`
+
+```c
+typedef struct {
+    GLuint count;         // 顶点/索引数
+    GLuint instanceCount; // 实例数
+    GLuint first;         // 起始顶点（Arrays）或 索引偏移（Elements）
+    GLuint baseVertex;    // BaseVertex（仅 Elements）
+    GLuint baseInstance;  // BaseInstance
+} DrawElementsIndirectCommand;
+```
+
+### 6. RangeElements 系列：限制索引范围
+
+```c
+void glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
+void glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices, GLint basevertex);
+```
+
+- 在 `glDrawElements` 基础上**显式声明索引取值范围 `[start, end]`**。
+- 用途：给驱动一个 hint，让其预转换/缓存这段顶点数据，提升性能。
+- 如果运行时索引超出 `[start, end]`，行为未定义。
+
+### 7. PrimitiveRestart：用特殊索引值重启图元
+
+```c
+glEnable(GL_PRIMITIVE_RESTART);
+glPrimitiveRestartIndex(0xFFFF);  // 指定重启索引值
+
+// 索引数组：[0,1,2, 0xFFFF, 4,5,6] → 一次绘制 2 个独立三角形条带
+glDrawElements(GL_TRIANGLE_STRIP, 7, GL_UNSIGNED_SHORT, indices);
+```
+
+- 把多个模型的索引放到同一个 element 数组，**用一个特殊索引值分隔**。
+- 功能上等价于 MultiDraw，但**无需存储 first/count 数组**。
+- 适合：用 `GL_TRIANGLE_STRIP` / `GL_TRIANGLE_FAN` 等连续图元绘制多个物体时避免拆分 drawcall。
+
+### 8. 全命令横向对比表
+
+| 命令 | 数据来源 | 批处理 | BaseVertex | BaseInstance | 范围限制 | 参数来源 |
+|------|---------|--------|-----------|-------------|---------|---------|
+| `glDrawArrays` | Arrays | 单次 | ✗ | ✗ | ✗ | CPU |
+| `glDrawElements` | Elements | 单次 | ✗ | ✗ | ✗ | CPU |
+| `glDrawRangeElements` | Elements | 单次 | ✗ | ✗ | ✓ | CPU |
+| `glDrawElementsBaseVertex` | Elements | 单次 | ✓ | ✗ | ✗ | CPU |
+| `glMultiDrawArrays` | Arrays | 多模型 | ✗ | ✗ | ✗ | CPU |
+| `glMultiDrawElements` | Elements | 多模型 | ✗ | ✗ | ✗ | CPU |
+| `glDrawArraysInstanced` | Arrays | 实例化 | ✗ | ✗ | ✗ | CPU |
+| `glDrawElementsInstanced` | Elements | 实例化 | ✗ | ✗ | ✗ | CPU |
+| `glDrawArraysInstancedBaseInstance` | Arrays | 实例化 | ✗ | ✓ | ✗ | CPU |
+| `glDrawElementsInstancedBaseVertex` | Elements | 实例化 | ✓ | ✗ | ✗ | CPU |
+| `glDrawElementsInstancedBaseVertexBaseInstance` | Elements | 实例化 | ✓ | ✓ | ✗ | CPU |
+| `glDrawArraysIndirect` | Arrays | 实例化 | ✗ | ✓ | ✗ | **GPU buffer** |
+| `glDrawElementsIndirect` | Elements | 实例化 | ✓ | ✓ | ✗ | **GPU buffer** |
+
+### 9. 选择指南
+
+| 需求 | 推荐命令 |
+|------|---------|
+| 画一个简单模型 | `glDrawArrays` / `glDrawElements` |
+| 同一 shader 画多个不同模型 | `glMultiDraw*` |
+| 大量相同模型（草地、粒子） | `glDraw*Instanced` |
+| 多模型合并到同一 VBO | `glDrawElementsBaseVertex` |
+| GPU 端决定 drawcall 参数（GPU-driven） | `glDraw*Indirect` |
+| 优化驱动预转换顶点 | `glDrawRangeElements` |
+| 连续条带图元绘制多个物体 | `glPrimitiveRestartIndex` + `glDrawElements` |
+| GPU 生成大量 drawcall | `glMultiDrawElementsIndirect`（GL 4.3+） |
+
+### 10. 性能要点
+
+1. **DrawCall 数量是 CPU 瓶颈**：每条 drawcall 都有 driver overhead，应优先用 MultiDraw / Instanced / Indirect 减少 CPU 调用。
+2. **Indirect + MultiDrawIndirect** 是 GPU-driven pipeline 的核心：可让 compute shader 生成可见性结果并直接发起 drawcall，CPU 完全不参与。
+3. **BaseVertex 合并 VBO**：把多个小 mesh 合并到一个大 VBO 中，用 BaseVertex 区分，减少 VBO 切换。
+4. **PrimitiveRestart** 仅对 strip/fan 类图元有意义，对 `GL_TRIANGLES` 无用（每个三角形本来就独立）。
+5. **RangeElements** 在现代驱动上收益不大，主要在老 OpenGL / 移动端有用。
 
 # color pixel & framebuffer
 ## color space
