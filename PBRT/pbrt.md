@@ -431,9 +431,116 @@ G的两种模型:
 
 ### 8.4.4 The Torrance–Sparrow Model
 
-1967年,Torrance and Sparrow,认为微表面是完美镜面反射表面
-然后跟前面的Beckmann Trowbridge-Reiz啥关系??Torrance-Sparrow是理论模型,Beckmann\Trowbridge-Reits等是具体的函数表达
+| 章节 | 内容 | 来源 |
+|---|---|---|
+| 1. 历史与定位 | 1967 年 Torrance-Sparrow 理论模型，Beckmann/Trowbridge-Reitz 等为具体 NDF | pbrt 3ed §8.4.4 |
+| 2. 几何推导 | 从微表面镜面反射出发，推导 $d\omega_h$ 与 $d\omega_i$ 关系 | pbrt 3ed §8.4.4 |
+| 3. BRDF 闭式公式 | $\frac{D(\omega_h) G F(\omega_o,\omega_h)}{4 (\mathbf{n}\cdot\omega_i)(\mathbf{n}\cdot\omega_o)}$ | pbrt 3ed eq(8.19) |
+| 4. $h$ 与 $\omega_h$ 的统一性 | 半角向量 = 参与反射的微表面法线方向 | pbrt 3ed §8.1 + 8.4.4 |
+| 5. 图与验证 | Figure 8.14 几何关系 + 物理意义表 | pbrt 3ed Fig 8.14 |
 
+---
+
+#### 1. 历史与模型定位
+
+1967 年，Torrance 和 Sparrow 在 *Theory for Off-Specular Reflection From Roughened Surfaces* 中提出：**把粗糙表面建模为由无数微小、朝向各异的完美镜面（微表面）组成的集合**。pbrt 把这一理论实现为通用 BRDF 框架。
+
+**Torrance-Sparrow 与 Beckmann / Trowbridge-Reitz 的关系**：
+
+- **Torrance-Sparrow 是理论框架**：它给出"微表面 = 完美镜面"这一假设下的 BRDF 结构 $f_r \propto \dfrac{D \cdot G \cdot F}{\text{归一化}}$
+- **Beckmann / Trowbridge-Reitz (GGX) 是 NDF 的具体函数**：用来填入 $D(\omega_h)$ 这个槽位
+- 即 Torrance-Sparrow 给出"框架"，Beckmann/GGX 给出"分布参数化"，二者**正交**而非互斥
+
+#### 2. 几何推导（关键角与立体角关系）
+
+设微表面法线为 $\omega_h$（半角向量），宏观法线为 $\mathbf{n}$，入射/出射方向分别为 $\omega_i, \omega_o$。
+
+![alt text](Torrance-Sparrow几何.png)
+
+![alt text](推导用到的几何.png)
+
+> **Figure 8.20（pbrt 3ed）**：微表面反射几何。$\theta_h$ 为 $\omega_h$ 与 $\mathbf{n}$ 的夹角；$\theta_o$ 为 $\omega_o$ 与 $\mathbf{n}$ 的夹角。只有法线等于 $\omega_h$ 的微表面才能把 $\omega_i$ 镜面反射到 $\omega_o$。
+
+**关键几何关系**（pbrt 3ed eq 8.17）：
+
+$$
+\cos\theta_h = \omega_i \cdot \omega_h = \omega_o \cdot \omega_h
+$$
+
+这是因为 $\omega_h$ 平分 $\omega_i$ 和 $\omega_o$。
+
+**立体角微分关系**（pbrt 3ed eq 8.18，推导核心）：
+
+$$
+d\omega_h = \frac{d\omega_i}{4 \cos\theta_h}
+\quad\Longleftrightarrow\quad
+d\omega_i = 4 \cos\theta_h \, d\omega_h
+$$
+
+**推导思路**：
+1. 反射定律要求微表面法线恰好为 $\omega_h = \text{normalize}(\omega_i + \omega_o)$
+2. 立体角 $d\omega_i$ 对应一组半角 $d\omega_h$
+3. 由于半角是 $\omega_i$ 绕 $\omega_h$ 旋转的"2 倍角关系"，立体角按 $\sin\theta/\sin(\theta/2)$ 变化
+4. 最终化简得到因子 $4\cos\theta_h$
+
+#### 3. BRDF 闭式公式
+
+将 $d\omega_i \to d\omega_h$ 代换、引入 NDF $D(\omega_h)$、masking-shadowing $G(\omega_i,\omega_o,\omega_h)$、Fresnel $F(\omega_o,\omega_h)$，pbrt 3ed eq(8.19)：
+
+$$
+\boxed{\;
+f_r(\omega_i, \omega_o) \;=\; \frac{D(\omega_h)\, G(\omega_i, \omega_o, \omega_h)\, F(\omega_o, \omega_h)}{4\,(\mathbf{n}\cdot\omega_i)\,(\mathbf{n}\cdot\omega_o)}
+\;}
+$$
+
+**各项物理意义**：
+
+| 项 | 名称 | 含义 |
+|---|---|---|
+| $D(\omega_h)$ | Normal Distribution Function (NDF) | 法线为 $\omega_h$ 方向的微表面浓度 |
+| $G(\omega_i,\omega_o,\omega_h)$ | Masking-Shadowing | 既被光看到、又被眼看到的微表面比例 |
+| $F(\omega_o,\omega_h)$ | Fresnel | 单个微表面镜面反射的能量比 |
+| $4(\mathbf{n}\cdot\omega_i)(\mathbf{n}\cdot\omega_o)$ | 归一化分母 | 把微表面投影面积换算到宏观表面投影面积 |
+
+**分母 4 的来历**：来自立体角变换 $d\omega_i = 4\cos\theta_h\,d\omega_h$，再结合 $\cos\theta_h = \omega_o \cdot \omega_h$ 折算到出射方向。
+
+#### 4. 半角向量 $h$ 与微表面法线 $\omega_h$：同一物理量
+
+> **澄清常见疑问**：文档中常把 $h$ 写成"半角向量"，把 $\omega_h$ 写成"微表面法线"，看似两件事，实际**完全相同**。
+
+**pbrt 3ed 原文（§8.1 + §8.4.4）**：
+
+> "We will use the symbol $\omega_h$ to represent the half-vector, halfway between $\omega_i$ and $\omega_o$. ... only microfacets with normal $\omega_h$ reflect light from $\omega_i$ to $\omega_o$."
+
+**两种命名视角**：
+
+| 视角 | 符号 | 含义 |
+|---|---|---|
+| 几何视角 | $h = \text{normalize}(\omega_i + \omega_o)$ | 半角向量，**定义方式**（怎么算） |
+| 物理视角 | $\omega_h = m$ | 能产生 $\omega_i \to \omega_o$ 镜面反射贡献的微表面法线方向，**物理意义**（为什么） |
+
+**关键洞察**：根据反射定律，只有法线等于半角向量的微表面才能把 $\omega_i$ 反射到 $\omega_o$。因此：
+
+$$
+\boxed{\;h \;\equiv\; \omega_h \;\equiv\; m\;}
+$$
+
+三者是**同一个向量**，只是不同资料（Blinn-Phong 用 $h$，pbrt 用 $\omega_h$，部分资料用 $m$）的命名差异。所以 $D(h)$ 就是 $D(\omega_h)$ 就是 $D(m)$，描述"法线为 $h$ 方向的微表面浓度"。
+
+**为何容易混淆**：Blinn-Phong 教程常写"用半角向量 $h$ 代替反射向量 $r$"，Cook-Torrance 教程常写"微表面法线 $m$"，让读者以为 $h$ 和 $m$ 是两件事。pbrt 直接用 $\omega_h$ 统一两者，更清晰。
+
+#### 5. 图与验证
+
+![alt text](Torrance-Sparrow-对比.png)
+
+> **Figure 8.15（pbrt 3ed）**：Torrance-Sparrow 模型在不同粗糙度下的反射波瓣。粗糙度越大，波瓣越宽；在掠射角处出现 **off-specular peak（离峰反射）**，反射能量峰值偏离理想镜面方向——这是 Fresnel 项 + masking-shadowing 共同作用的结果，也是 Torrance-Sparrow 相比 Phong 的关键物理优势。
+
+上面的是幻觉，没有的图
+
+**验证要点**：
+1. $\omega_i = \omega_o = \mathbf{n}$ 时，$\omega_h = \mathbf{n}$，$D$ 取最大值，符合"正入射最亮"
+2. 掠射角（$\mathbf{n}\cdot\omega_o \to 0$）时分母趋零，但 $G$ 同时趋零，二者竞争产生 off-specular peak
+3. 当 $D$ 选 Beckmann 时，Torrance-Sparrow 退化为原始 1967 模型；选 GGX 时为现代 PBR 主流形式
 
 ## 8.5 Fresnel Incidence Effects
 Fresnel Blend![Alt text](FresnelBlend.png)
