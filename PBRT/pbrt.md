@@ -145,7 +145,7 @@ Ch.16 双向方法：从光源和相机两端出发
 ## 整本书的思维导图
 
 ```
-              渲染方程 Lo = Le + ∫Ω fr·Li·cosθ·dω
+              渲染方程  Lo = Le + ∫Ω fr·Li·cosθ dω
                     │
         ┌───────────┼───────────┐
         │           │           │
@@ -210,8 +210,8 @@ polarization:偏振
 5. Radiance L: ![Alt text](Radiance.png) 辐射亮度(辉度) 单位面积单位角度的辐射通量
 6. incident and exitant radiance ![Alt text](in-out-radiance.png) 入射辉度 出射辉度
 
-所以radiance L=d^2^(phi)/d(omega)dAcos(theta)=d(d(f(Q))/dt)/d(omega)dAcos(theta)=>d(f(hc/lambda))/d(omega)dAcos(theta)=>d^2^(f(lambda))/d(omega)dAcos(theta)d(lambda),即L是波长的函数，
-从而可以定义spectral radiance L~lambda~ = dL/d(lambda)
+所以radiance $L = \frac{d^2\Phi}{d\omega \, dA \cos\theta} = \frac{d(d(\Phi(Q))/dt)}{d\omega \, dA \cos\theta} \Rightarrow \frac{d(\Phi(hc/\lambda))}{d\omega \, dA \cos\theta} \Rightarrow \frac{d^2\Phi(\lambda)}{d\omega \, dA \cos\theta \, d\lambda}$，即L是波长的函数，
+从而可以定义spectral radiance $L_\lambda = \frac{dL}{d\lambda}$
 第4版中![alt text](radiance与波长的关系.png) 
 
 进而每一个radiometry变量都有对应的spectral radiometric quantity
@@ -239,14 +239,14 @@ surface_area = omega * radius^2--->立体角4pi,球面积4pi*r^2
 photometry:光度学,研究可见电磁波(可见光)辐射的物理性质,包括辐射强度,辐射照度,辐射亮度等
 
 1. 由radiometric quantity得到 spectral radiometric quantity, 也就是波长的函数
-2. Each spectral radiometric quantity can be converted to its corresponding photometric quantity by integrating against the spectral response curve V(lambda) , which describes the relative sensitivity of the human eye to various wavelengths.波普辐射量再根据人眼对波普的响应曲线V(lambda)进行积分得到光度量
+2. Each spectral radiometric quantity can be converted to its corresponding photometric quantity by integrating against the spectral response curve $V(\lambda)$ , which describes the relative sensitivity of the human eye to various wavelengths.波普辐射量再根据人眼对波普的响应曲线 $V(\lambda)$ 进行积分得到光度量
 
 定义luminance Y ![alt text](luminance与radiance的乘以人眼敏感度的积分关系.png), Y解释了同等能量下，不同spd普功率分布的绿光**看起来**比蓝光更亮
 
-Y、V(lambda)与XYZ表示的颜色紧密相关，CIE Y(lambda)三刺激曲线被选择为与V(lambda)成比例![alt text](<luminance Y用CIE Y三刺激值表示.png>)
-CIE Y(lambda) = 683 * V(lambda)
+Y、$V(\lambda)$ 与XYZ表示的颜色紧密相关，CIE $Y(\lambda)$ 三刺激曲线被选择为与 $V(\lambda)$ 成比例![alt text](<luminance Y用CIE Y三刺激值表示.png>)
+$$Y(\lambda) = 683 \cdot V(\lambda)$$
 
-![alt text](radiomeric量photomeric量的对应表.png) 这两量是通过 spectral radiometic quantity(radiometic量对波长的函数)及spectral response curve V(lambda)相乘得到的
+![alt text](radiomeric量photomeric量的对应表.png) 这两量是通过 spectral radiometic quantity(radiometic量对波长的函数)及spectral response curve $V(\lambda)$ 相乘得到的
 
 各种颜色空间 rtr+pbrt 讲清楚了，都是CIE XYZ推导的,CIE XYZ又是基于物理推导(物理学)+实验测量(生理学)得到的，整个从电磁辐射到人眼感知最终量化为颜色的过程就清晰了
 
@@ -451,7 +451,7 @@ Fresnel Blend![Alt text](FresnelBlend.png)
    2. ![Alt text](in-scattering.png)
 
 由于absorption以及outgoing散射导致的总的radiance衰减attenuation or extinction
-![alt text](总衰减公式.png) sigma_t = sigma_a + sigma_s
+![alt text](总衰减公式.png) $\sigma_t = \sigma_a + \sigma_s$
 
 albedo![Alt text](albedo.png)散射相对于衰减的概率 [0 1]
 
@@ -533,73 +533,62 @@ Monte Carlo (MC) methods all share the concept of using randomly drawn samples t
 
 **离散型随机变量**：用概率质量函数（PMF）描述
 
-```
-P(X = xᵢ) = pᵢ
+$$P(X = x_i) = p_i$$
 
-满足：Σ pᵢ = 1,  pᵢ ≥ 0
-```
+满足：$\sum p_i = 1, \quad p_i \ge 0$
 
 **连续型随机变量**：用概率密度函数（PDF）描述
 
-```
-pdf: p(x) ≥ 0
+$$\text{pdf: } p(x) \ge 0$$
 
-满足：∫(-∞→+∞) p(x) dx = 1
+满足：
 
-P(a ≤ X ≤ b) = ∫(a→b) p(x) dx
-```
+$$\int_{-\infty}^{+\infty} p(x) \, dx = 1$$
 
-> 注意：p(x) 不是概率，p(x)·dx 才是落在 [x, x+dx) 内的概率。p(x) 可以大于 1。
+$$P(a \le X \le b) = \int_a^b p(x) \, dx$$
+
+> 注意：p(x) 不是概率，$p(x) \, dx$ 才是落在 $[x, x+dx)$ 内的概率。p(x) 可以大于 1。
 
 ### 累积分布函数（CDF）
 
-```
-CDF: P(x) = P(X ≤ x) = ∫(-∞→x) p(t) dt
+$$\text{CDF: } P(x) = P(X \le x) = \int_{-\infty}^{x} p(t) \, dt$$
 
 性质：
-- 单调递增：x₁ < x₂ ⟹ P(x₁) ≤ P(x₂)
-- P(-∞) = 0,  P(+∞) = 1
-- p(x) = dP/dx    （PDF 是 CDF 的导数）
-```
+- 单调递增：$x_1 < x_2 \implies P(x_1) \le P(x_2)$
+- $P(-\infty) = 0, \quad P(+\infty) = 1$
+- $p(x) = \frac{dP}{dx}$    （PDF 是 CDF 的导数）
 
 ### 期望（Expected Value / Mean）
 
 期望是随机变量的"平均值"，是长期重复试验的理论均值。
 
-```
-离散型：E[X] = Σ xᵢ · pᵢ
+$$\text{离散型：} E[X] = \sum x_i \cdot p_i$$
 
-连续型：E[X] = ∫(-∞→+∞) x · p(x) dx
-```
+$$\text{连续型：} E[X] = \int_{-\infty}^{+\infty} x \cdot p(x) \, dx$$
 
 **关键性质（线性性）**：
-```
-E[aX + b] = a·E[X] + b
-E[X + Y] = E[X] + E[Y]    （无论 X, Y 是否独立）
-E[c] = c                   （c 为常数）
-```
+
+$$E[aX + b] = a \cdot E[X] + b$$
+$$E[X + Y] = E[X] + E[Y] \quad (\text{无论 } X, Y \text{ 是否独立})$$
+$$E[c] = c \quad (c \text{ 为常数})$$
 
 **函数的期望**：
-```
-E[g(X)] = ∫ g(x) · p(x) dx
-```
+
+$$E[g(X)] = \int g(x) \cdot p(x) \, dx$$
 
 ### 方差（Variance）
 
 方差度量随机变量偏离期望的程度。
 
-```
-Var[X] = E[(X - E[X])²] = E[X²] - (E[X])²
+$$\text{Var}[X] = E[(X - E[X])^2] = E[X^2] - (E[X])^2$$
 
-标准差：σ = √(Var[X])
-```
+$$\text{标准差：} \sigma = \sqrt{\text{Var}[X]}$$
 
 **性质**：
-```
-Var[aX + b] = a² · Var[X]      （加常数不影响方差）
-Var[X + Y] = Var[X] + Var[Y]    （仅当 X, Y 独立时）
-Var[c] = 0                      （常数方差为 0）
-```
+
+$$\text{Var}[aX + b] = a^2 \cdot \text{Var}[X] \quad (\text{加常数不影响方差})$$
+$$\text{Var}[X + Y] = \text{Var}[X] + \text{Var}[Y] \quad (\text{仅当 } X, Y \text{ 独立时})$$
+$$\text{Var}[c] = 0 \quad (\text{常数方差为 0})$$
 
 > **方差为 0 ⟺ 随机变量是常数**——这是重要性采样的理论基础：如果采样 PDF 与被积函数完全成比例，则估计值恒为常数，方差为 0。
 
@@ -618,25 +607,21 @@ Cov[X, Y] = E[(X - E[X])(Y - E[Y])] = E[XY] - E[X]·E[Y]
 
 蒙特卡洛方法的理论基础：
 
-```
-设 X₁, X₂, ... 是独立同分布(i.i.d.)的随机变量，E[Xᵢ] = μ
+设 $X_1, X_2, \ldots$ 是独立同分布(i.i.d.)的随机变量，$E[X_i] = \mu$
 
-则当 N → ∞ 时：
+则当 $N \to \infty$ 时：
 
-    (1/N) Σ Xᵢ  →  μ    （以概率 1 收敛）
-```
+$$\frac{1}{N} \sum X_i \to \mu \quad (\text{以概率 1 收敛})$$
 
 含义：采样次数越多，样本均值越接近真实期望值。
 
 ### 中心极限定理（Central Limit Theorem）
 
-```
-设 X₁, ..., Xₙ 独立同分布，E[Xᵢ] = μ，Var[Xᵢ] = σ²
+设 $X_1, \ldots, X_n$ 独立同分布，$E[X_i] = \mu$，$\text{Var}[X_i] = \sigma^2$
 
-则当 N → ∞ 时：
+则当 $N \to \infty$ 时：
 
-    √N · ( (1/N)ΣXᵢ - μ ) / σ  →  N(0, 1)    （标准正态分布）
-```
+$$\frac{\sqrt{N} \cdot \left( \frac{1}{N}\sum X_i - \mu \right)}{\sigma} \to N(0, 1) \quad (\text{标准正态分布})$$
 
 含义：无论原始分布是什么，大量样本的均值**近似服从正态分布**。这解释了为什么蒙特卡洛估计的误差呈高斯分布。
 
@@ -646,7 +631,7 @@ Cov[X, Y] = E[(X - E[X])(Y - E[Y])] = E[XY] - E[X]·E[Y]
 
 | 统计概念 | 在 MC 积分中的角色 |
 |---|---|
-| 随机变量 X | 按某个 PDF 采样的点 xᵢ |
+| 随机变量 X | 按某个 PDF 采样的点 $x_i$ |
 | PDF p(x) | 采样策略（决定从哪里采样） |
 | 期望 E[X] | MC 估计器的期望 = 积分值（无偏性） |
 | 方差 Var[X] | MC 估计的噪声/误差 |
@@ -680,41 +665,35 @@ f(x)是待求积分的函数,pdf(x)是进行蒙特卡洛采样时所采用的采
 
 对应 PBRT 章节 [Monte Carlo Estimator](https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/The_Monte_Carlo_Estimator)，其标准形式为：
 
-```
-            1    N   f(Xᵢ)
-    F_N  =  ―   Σ  ―――――――
-            N   i=1  p(Xᵢ)
-```
+$$F_N = \frac{1}{N} \sum_{i=1}^{N} \frac{f(X_i)}{p(X_i)}$$
 
 #### 各变量含义
 
 | 变量 | 含义 | 说明 |
 |---|---|---|
-| **F_N** | 积分估计值 | 对定积分 I = ∫ f(x) dx 的蒙特卡洛估计（下标 N 表示用 N 个样本估计） |
+| **$F_N$** | 积分估计值 | 对定积分 $I = \int f(x) \, dx$ 的蒙特卡洛估计（下标 N 表示用 N 个样本估计） |
 | **N** | 采样数量 | 独立采样的样本总数 |
-| **f(Xᵢ)** | 被积函数值 | 在采样点 Xᵢ 处函数 f 的取值。渲染中通常是辐射度积分中的被积项（如入射辐射度、BRDF、几何项的乘积） |
-| **Xᵢ** | 采样点（随机变量） | 服从概率密度函数 p(x) 分布的第 i 个随机采样点，从定义域中按 p(x) 抽取的样本 |
-| **p(Xᵢ)** | 概率密度 | 随机变量 Xᵢ 处的概率密度函数值，即采样时使用的 PDF |
+| **$f(X_i)$** | 被积函数值 | 在采样点 $X_i$ 处函数 f 的取值。渲染中通常是辐射度积分中的被积项（如入射辐射度、BRDF、几何项的乘积） |
+| **$X_i$** | 采样点（随机变量） | 服从概率密度函数 $p(x)$ 分布的第 i 个随机采样点，从定义域中按 $p(x)$ 抽取的样本 |
+| **$p(X_i)$** | 概率密度 | 随机变量 $X_i$ 处的概率密度函数值，即采样时使用的 PDF |
 
 #### 关键性质
 
-- **无偏性**：当 Xᵢ ~ p(x) 时，E[F_N] = ∫ f(x) dx，估计的期望等于真实积分值
-- **方差**：Var[F_N] = (1/N) · ( ∫ f(x)² / p(x) dx − I² )，方差随 N 增大线性减小，收敛速度 O(1/√N)
-- **重要性采样**：当 p(x) ∝ f(x) 时方差最小，这就是渲染中常让采样分布匹配被积函数形状（如对 BRDF 的 lobe 分布采样）的原因
+- **无偏性**：当 $X_i \sim p(x)$ 时，$E[F_N] = \int f(x) \, dx$，估计的期望等于真实积分值
+- **方差**：$\text{Var}[F_N] = \frac{1}{N} \cdot \left( \int \frac{f(x)^2}{p(x)} \, dx - I^2 \right)$，方差随 N 增大线性减小，收敛速度 $O(1/\sqrt{N})$
+- **重要性采样**：当 $p(x) \propto f(x)$ 时方差最小，这就是渲染中常让采样分布匹配被积函数形状（如对 BRDF 的 lobe 分布采样）的原因
 
 ### 大写 X 与小写 x 的区分（关键概念）
 
-公式 13.3 中使用大写 Xᵢ 是概率论中的标准约定，核心在于区分"随机变量"与"具体取值"。
+公式 13.3 中使用大写 $X_i$ 是概率论中的标准约定，核心在于区分"随机变量"与"具体取值"。
 
-#### 1. Xᵢ 是 N 个独立同分布（i.i.d.）的随机变量
+#### 1. $X_i$ 是 N 个独立同分布（i.i.d.）的随机变量
 
-```
-    X₁, X₂, ..., X_N  ~  i.i.d.  p(x)
+$$X_1, X_2, \ldots, X_N \sim \text{i.i.d.} \; p(x)$$
 
-    - 独立：Xᵢ 之间互不影响
-    - 同分布：每个 Xᵢ 都服从同一个概率密度 p(x)
-    - N 个随机变量对应 N 次独立采样
-```
+- 独立：$X_i$ 之间互不影响
+- 同分布：每个 $X_i$ 都服从同一个概率密度 $p(x)$
+- N 个随机变量对应 N 次独立采样
 
 #### 2. 大写 X 与小写 x 的本质区别
 
@@ -727,40 +706,40 @@ f(x)是待求积分的函数,pdf(x)是进行蒙特卡洛采样时所采用的采
 - X 像"骰子"（还没掷，可能掷出 1~6 中任意一个）
 - x 像"骰子掷出的结果：3"（已经掷完，是个确定的数）
 
-#### 3. 公式 13.3 中为什么用大写 Xᵢ
+#### 3. 公式 13.3 中为什么用大写 $X_i$
 
-这里用大写 Xᵢ 是因为 **F_N 本身也是一个随机变量**——它是 N 个随机变量的函数，其值取决于"抽到了哪些样本"。所以可以讨论它的期望 E[F_N] 和方差 Var[F_N]。
+这里用大写 $X_i$ 是因为 **$F_N$ 本身也是一个随机变量**——它是 N 个随机变量的函数，其值取决于"抽到了哪些样本"。所以可以讨论它的期望 $E[F_N]$ 和方差 $\text{Var}[F_N]$。
 
-#### 4. 随机变量转换为采样点 xᵢ 的过程
+#### 4. 随机变量转换为采样点 $x_i$ 的过程
 
 实际计算时，做一次蒙特卡洛模拟的过程：
 
 | 阶段 | 符号 | 状态 |
 |---|---|---|
-| 定义阶段 | X₁, ..., X_N（大写） | 抽象的随机变量，分布为 p(x)，值未定 |
+| 定义阶段 | $X_1, \ldots, X_N$（大写） | 抽象的随机变量，分布为 $p(x)$，值未定 |
 | 采样阶段 | 抽取具体样本 | 按分布 p 生成 N 个数值 |
-| 计算阶段 | x₁, ..., x_N（小写） | N 个**确定数值**（一次实现） |
-| 结果 | F_N = (1/N) · Σ f(xᵢ)/p(xᵢ) | 一个**确定的数值**（积分估计值） |
+| 计算阶段 | $x_1, \ldots, x_N$（小写） | N 个**确定数值**（一次实现） |
+| 结果 | $F_N = \frac{1}{N} \cdot \sum f(x_i)/p(x_i)$ | 一个**确定的数值**（积分估计值） |
 
 #### 5. 估计器（Estimator）vs 估计值（Estimate）
 
-- **估计器**：F_N 作为 Xᵢ 的函数，是随机变量 → 用大写
-- **估计值**：代入具体 xᵢ 后得到的具体数值 → 一般仍记 F_N 但已是实数
+- **估计器**：$F_N$ 作为 $X_i$ 的函数，是随机变量 → 用大写
+- **估计值**：代入具体 $x_i$ 后得到的具体数值 → 一般仍记 $F_N$ 但已是实数
 
-PBRT 在公式 13.3 中写大写 Xᵢ，是强调"这是随机变量层面的推导"（用于证明无偏性、计算方差）；代码实现时操作的是小写 xᵢ（具体采样值）。
+PBRT 在公式 13.3 中写大写 $X_i$，是强调"这是随机变量层面的推导"（用于证明无偏性、计算方差）；代码实现时操作的是小写 $x_i$（具体采样值）。
 
 #### 6. 渲染中的具体对应
 
-在渲染方程积分 ∫_Ω L_i(ωᵢ) · f_r(ωᵢ, ω_o) · cosθᵢ dωᵢ 中：
+在渲染方程积分 $\int_\Omega L_i(\omega_i) \cdot f_r(\omega_i, \omega_o) \cdot \cos\theta_i \, d\omega_i$ 中：
 
 | 公式符号 | 渲染中的对应 |
 |---|---|
-| f(x) | L_i · f_r · cosθ（被积项） |
-| p(x) | 采样方向 ωᵢ 的 PDF（如余弦加权、BRDF 加权分布） |
-| Xᵢ | 第 i 个采样方向 |
-| F_N | 该像素/该点出射辐射度的蒙特卡洛估计 |
+| $f(x)$ | $L_i \cdot f_r \cdot \cos\theta$（被积项） |
+| $p(x)$ | 采样方向 $\omega_i$ 的 PDF（如余弦加权、BRDF 加权分布） |
+| $X_i$ | 第 i 个采样方向 |
+| $F_N$ | 该像素/该点出射辐射度的蒙特卡洛估计 |
 
-> **一句话总结**：大写 Xᵢ = "将要抽取的随机变量"（i.i.d.，服从 p）；小写 xᵢ = "已经抽到的具体数值"（Xᵢ 的一次实现）。公式用大写是为了在概率层面讨论期望和方差；实际计算时换成小写代入即可。
+> **一句话总结**：大写 $X_i$ = "将要抽取的随机变量"（i.i.d.，服从 p）；小写 $x_i$ = "已经抽到的具体数值"（$X_i$ 的一次实现）。公式用大写是为了在概率层面讨论期望和方差；实际计算时换成小写代入即可。
 
 ### 提高估算的准确性的数学原理
 常量函数的积分用mc估算时,不受采样点分布的影响
@@ -788,7 +767,8 @@ variance reduction:增加实验次数 重要性采样
 
 由离散随机变量的期望公式,随机变量的期望就是随机变量所有可能的值*取得该值的概率的求和,扩展到连续随机变量,只需要知道取得x的概率,也就是pdf在微小距离的积分,黎曼和
 ![alt text](离散随机变量及其函数的期望公式.png)
-![alt text](连续随机变量的期望.png)
+
+![alt text](连续随机变量的期望.png)  
 ![alt text](连续随机变量的函数的期望.png)
 
 variance reduction:
@@ -814,18 +794,17 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 
 **证明**：
 
-```
-设 Y = F(X)，其中 F 为 X 的 CDF
+设 $Y = F(X)$，其中 $F$ 为 $X$ 的 CDF
 
-由 CDF 定义：F(x) = P(X ≤ x)
+由 CDF 定义：$F(x) = P(X \le x)$
 
-则 Y 的 CDF：
-    P(Y ≤ y) = P(F(X) ≤ y) = P(X ≤ F⁻¹(y)) = F(F⁻¹(y)) = y
+则 $Y$ 的 CDF：
 
-即 Y ~ Uniform(0, 1)，QED
-```
+$$P(Y \le y) = P(F(X) \le y) = P(X \le F^{-1}(y)) = F(F^{-1}(y)) = y$$
 
-> **关键点**：CDF 本身是单调递增函数，因此其反函数 F⁻¹ 存在；映射后的 Y 服从均匀分布。
+即 $Y \sim \text{Uniform}(0, 1)$，QED
+
+> **关键点**：CDF 本身是单调递增函数，因此其反函数 $F^{-1}$ 存在；映射后的 Y 服从均匀分布。
 
 **著名应用**：直方图均衡化（Histogram Equalization）——通过图像本身统计信息（CDF）将其映射到接近均匀分布的状态，提高对比度。逆变换采样是该定理的另一个应用。
 
@@ -833,32 +812,29 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 
 逆变换采样（又称逆万流归宗），即万流归宗定理的**反向操作**：从均匀分布采样来生成一个已知 CDF 的随机变量。
 
-**核心思想**：将"生成指定分布的采样"转化为【均匀分布采样 + 函数变换映射】的过程，从而简化任务难度。用于映射均匀分布变量的函数就是目标分布的 CDF 的**反函数** F⁻¹。
+**核心思想**：将"生成指定分布的采样"转化为【均匀分布采样 + 函数变换映射】的过程，从而简化任务难度。用于映射均匀分布变量的函数就是目标分布的 CDF 的**反函数** $F^{-1}$。
 
 **算法步骤**：
 
-```
-1. 生成 u ~ Uniform(0, 1)
-2. 计算 x = F⁻¹(u)
-3. 则 x 服从 CDF 为 F 的目标分布
-```
+1. 生成 $u \sim \text{Uniform}(0, 1)$
+2. 计算 $x = F^{-1}(u)$
+3. 则 $x$ 服从 CDF 为 $F$ 的目标分布
 
 **证明**：
 
-```
-设 U ~ Uniform(0, 1)，令 X = F⁻¹(U)
+设 $U \sim \text{Uniform}(0, 1)$，令 $X = F^{-1}(U)$
 
-则 X 的 CDF：
-    P(X ≤ x) = P(F⁻¹(U) ≤ x) = P(U ≤ F(x)) = F(x)
+则 $X$ 的 CDF：
 
-即 X 的 CDF 就是目标分布的 CDF，说明 X 可作为目标分布的采样。QED
-```
+$$P(X \le x) = P(F^{-1}(U) \le x) = P(U \le F(x)) = F(x)$$
+
+即 $X$ 的 CDF 就是目标分布的 CDF，说明 $X$ 可作为目标分布的采样。QED
 
 **直观理解**：
 
 - CDF F(x) 表示"X ≤ x 的概率"，取值范围为 [0,1]
 - 均匀分布 U ~ Uniform(0,1) 给出一个 [0,1] 上的概率值
-- 求逆 F⁻¹(u) 即"已知累计概率为 u，反推对应的 x 值"
+- 求逆 $F^{-1}(u)$ 即"已知累计概率为 u，反推对应的 x 值"
 - CDF 增长快的区域（PDF 大）→ u 落在该区域的概率大 → 采样到的 x 多（符合目标分布）
 
 #### 3. 特例：Box-Muller 变换（从均匀分布生成高斯分布）
@@ -882,8 +858,8 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 高斯函数的 PDF 无法直接显式求定积分，因此无法直接求 CDF 的反函数。Box-Muller 通过以下技巧解决：
 
 1. 设置两个独立的高斯分布，整合成一个**二元高斯分布**
-2. 改写成**极坐标** (r, θ)，将二元高斯分解为两个独立参数：
-   - **角度 θ**：服从均匀分布 θ ~ Uniform(0, 2π)，直接由 u₂ 采样
+2. 改写成**极坐标** $(r, \theta)$，将二元高斯分解为两个独立参数：
+   - **角度 θ**：服从均匀分布 $\theta \sim \text{Uniform}(0, 2\pi)$，直接由 $u_2$ 采样
    - **模值 r**：通过逆变换采样获得（需计算 CDF 及其反函数），由 u₁ 采样
 3. 求解 r 的过程中采用了**二重积分单位圆面积**的 trick
 
@@ -899,7 +875,7 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 | 优点 | 局限 |
 |---|---|
 | 理论简单，证明严谨 | 需要已知 CDF 的**解析表达式** |
-| 对一维分布效果好 | 需要能求出 CDF 的**反函数 F⁻¹** |
+| 对一维分布效果好 | 需要能求出 CDF 的**反函数 $F^{-1}$** |
 | 可生成任意连续分布 | 对高维分布不直接适用（需分解或结合其他方法） |
 | 是其他采样方法（如拒绝采样）的基础 | 对某些复杂分布（如高斯）需特殊技巧（如 Box-Muller） |
 
@@ -910,9 +886,9 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 ```
 蒙特卡洛积分需要按某 PDF p(x) 采样 → 需要生成服从 p(x) 的样本
     ↓
-逆变换采样：u ~ Uniform(0,1) → x = F⁻¹(u) ~ p(x)
+逆变换采样：u ~ Uniform(0,1) → x = F^-1(u) ~ p(x)
     ↓
-代入 MC 估计器：F_N = (1/N) Σ f(xᵢ)/p(xᵢ)
+代入 MC 估计器：F_N = (1/N) · Σ f(x_i)/p(x_i)
 ```
 
 - 当 p(x) 为均匀分布时，退化为最简单的均匀采样
@@ -936,17 +912,17 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 
 | 方法 | 核心思想 | 关键操作 |
 |---|---|---|
-| **逆变换采样** | 利用 CDF 的反函数直接映射 | u ~ Uniform(0,1) → x = F⁻¹(u) |
+| **逆变换采样** | 利用 CDF 的反函数直接映射 | $u \sim \text{Uniform}(0,1) \to x = F^{-1}(u)$ |
 | **拒绝采样** | 用易采样的分布 q(x) "罩住"目标分布 p(x)，通过接受/拒绝机制筛选 | 从 M·q(x) 采样 → 以 p(x)/(M·q(x)) 概率接受 |
 
 #### 2. 适用场景对比
 
 | 对比维度 | 逆变换采样 | 拒绝采样 |
 |---|---|---|
-| **前提条件** | 需已知 CDF 解析式 + 反函数 F⁻¹ 可求 | 只需已知 PDF 比例关系（可未归一化） |
+| **前提条件** | 需已知 CDF 解析式 + 反函数 $F^{-1}$ 可求 | 只需已知 PDF 比例关系（可未归一化） |
 | **样本效率** | 100%（每个 u 都生成一个有效样本） | < 100%（部分样本被拒绝） |
 | **计算成本** | 低（一次映射） | 较高（需多次采样 + 接受/拒绝判断） |
-| **对复杂分布** | 受限于 F⁻¹ 是否可求 | 只要找到合适的 q(x) 即可 |
+| **对复杂分布** | 受限于 $F^{-1}$ 是否可求 | 只要找到合适的 q(x) 即可 |
 | **典型应用** | CDF 易求的分布（指数、柯西、Weibull 等） | CDF 难求但 PDF 已知的分布 |
 
 #### 3. 两者关系
@@ -964,20 +940,18 @@ https://scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/mont
 #### 4. 算法流程对比
 
 **逆变换采样**：
-```
-1. 生成 u ~ Uniform(0, 1)
-2. 计算 x = F⁻¹(u)
-3. 返回 x（100% 被接受）
-```
+
+1. 生成 $u \sim \text{Uniform}(0, 1)$
+2. 计算 $x = F^{-1}(u)$
+3. 返回 $x$（100% 被接受）
 
 **拒绝采样**：
-```
-1. 选择易采样的 q(x)，确定常数 M 使 M·q(x) ≥ p(x) 对所有 x 成立
-2. 生成 x ~ q(x)（通常用逆变换采样）
-3. 生成 u ~ Uniform(0, 1)
-4. 若 u ≤ p(x) / (M·q(x))，接受 x；否则拒绝，回到步骤 2
-5. 返回被接受的 x
-```
+
+1. 选择易采样的 $q(x)$，确定常数 $M$ 使 $M \cdot q(x) \ge p(x)$ 对所有 $x$ 成立
+2. 生成 $x \sim q(x)$（通常用逆变换采样）
+3. 生成 $u \sim \text{Uniform}(0, 1)$
+4. 若 $u \le p(x) / (M \cdot q(x))$，接受 $x$；否则拒绝，回到步骤 2
+5. 返回被接受的 $x$
 
 #### 5. 选择建议
 
@@ -997,7 +971,7 @@ MC 积分需按 PDF p(x) 采样
     └─ p(x) 高维/多峰 → Metropolis / MCMC
 ```
 
-两种方法都是**生成服从指定分布样本的工具**，为 MC 估计器 F_N = (1/N)·Σ f(xᵢ)/p(xᵢ) 提供输入样本 xᵢ。采样质量直接影响估计的方差和收敛速度。
+两种方法都是**生成服从指定分布样本的工具**，为 MC 估计器 $F_N = \frac{1}{N} \cdot \sum f(x_i)/p(x_i)$ 提供输入样本 $x_i$。采样质量直接影响估计的方差和收敛速度。
 
 ## 13.4 Metropolis Sampling
 MCMC Markov Chain MC
@@ -1012,74 +986,60 @@ Metropolis 采样是一种从非负函数 f 中生成样本集的技术，样本
 
 #### 1. 算法基本思路
 
-设 f 定义在任意维状态空间 Ω（常为 Ω ⊂ ℝⁿ）上，返回实数值。选定第一个样本 X₀ 后，每个后续样本 Xᵢ 通过随机**变异（mutation）**从 Xᵢ₋₁ 生成建议样本 X′，再决定接受或拒绝：
+设 f 定义在任意维状态空间 $\Omega$（常为 $\Omega \subset \mathbb{R}^n$）上，返回实数值。选定第一个样本 $X_0$ 后，每个后续样本 $X_i$ 通过随机**变异（mutation）**从 $X_{i-1}$ 生成建议样本 $X'$，再决定接受或拒绝：
 
-- 接受 → Xᵢ = X′
-- 拒绝 → Xᵢ = Xᵢ₋₁
+- 接受 → $X_i = X'$
+- 拒绝 → $X_i = X_{i-1}$
 
 当状态转移满足若干条件时，样本分布达到**平稳分布（stationary distribution）**，且该分布正比于 f 的概率密度。
 
 #### 2. 转移函数与接受概率
 
-设变异方法从当前状态 X 提议转移到 X′，定义**转移函数** T(X → X′) 为：在当前状态为 X 时，变异方法提议转移到 X′ 的概率密度。
+设变异方法从当前状态 $X$ 提议转移到 $X'$，定义**转移函数** $T(X \to X')$ 为：在当前状态为 $X$ 时，变异方法提议转移到 $X'$ 的概率密度。
 
-为使样本分布正比于 f，定义**接受概率（acceptance probability）** a(X → X′)，需满足**细致平稳条件（detailed balance）**：
+为使样本分布正比于 f，定义**接受概率（acceptance probability）** $a(X \to X')$，需满足**细致平稳条件（detailed balance）**：
 
-```
-f(X) · T(X → X′) · a(X → X′) = f(X′) · T(X′ → X) · a(X′ → X)
-```
+$$f(X) \cdot T(X \to X') \cdot a(X \to X') = f(X') \cdot T(X' \to X) \cdot a(X' \to X)$$
 
 使均衡收敛最快的一组 a 定义为（PBRT 式 13.7）：
 
-```
-            f(X′) · T(X′ → X)
-a(X→X′) = min[1, ―――――――――――――――――]
-            f(X)  · T(X → X′)
-```
+$$a(X \to X') = \min\left[1, \frac{f(X') \cdot T(X' \to X)}{f(X) \cdot T(X \to X')}\right]$$
 
-**对称情形简化**：若 T(X→X′) = T(X′→X)（如以当前点为中心的随机扰动），则（PBRT 式 13.8）：
+**对称情形简化**：若 $T(X \to X') = T(X' \to X)$（如以当前点为中心的随机扰动），则（PBRT 式 13.8）：
 
-```
-a(X→X′) = min[1, f(X′) / f(X)]
-```
+$$a(X \to X') = \min\left[1, \frac{f(X')}{f(X)}\right]$$
 
 即只需比较 f 在新旧两点的比值——这就是经典 Metropolis 算法。
 
 #### 3. 基本算法伪代码（PBRT）
 
-```
-X = X0
-for i = 1 to n:
-    X′ = mutate(X)              # 通过变异策略生成建议样本
-    a  = accept(X, X′)          # 计算接受概率 a
-    if (random() < a):
-        X = X′                  # 接受变异
-    record(X)                   # 记录样本
-```
+- $X = X_0$
+- **for** $i = 1$ **to** $n$:
+    - $X' = \text{mutate}(X)$              # 通过变异策略生成建议样本
+    - $a = \text{accept}(X, X')$          # 计算接受概率 $a$
+    - **if** $\text{random}() < a$: $X = X'$  # 接受变异
+    - $\text{record}(X)$                   # 记录样本
 
-每次产生的样本 Xᵢ 都可用于积分估计或存入数据结构。
+每次产生的样本 $X_i$ 都可用于积分估计或存入数据结构。
 
 #### 4. 期望值技术（Expected Values）
 
 由于 Metropolis 自然回避 f 值较低的区域，那些区域样本很少。**期望值技术**用于改善此问题：
 
-- 仍按原方法决定下一状态（X 或 X′）
+- 仍按原方法决定下一状态（$X$ 或 $X'$）
 - 但**两个点都记录样本**，各自带权重：
-  - X  的权重 = 1 − a
-  - X′ 的权重 = a
+  - $X$ 的权重 = $1 - a$
+  - $X'$ 的权重 = $a$
 
 伪代码：
 
-```
-X = X0
-for i = 1 to n:
-    X′ = mutate(X)
-    a  = accept(X, X′)
-    record(X,  1 - a)           # 记录 X，权重 1-a
-    record(X′, a)               # 记录 X′，权重 a
-    if (random() < a):
-        X = X′
-```
+- $X = X_0$
+- **for** $i = 1$ **to** $n$:
+    - $X' = \text{mutate}(X)$
+    - $a = \text{accept}(X, X')$
+    - $\text{record}(X, 1-a)$           # 记录 $X$，权重 $1-a$
+    - $\text{record}(X', a)$            # 记录 $X'$，权重 $a$
+    - **if** $\text{random}() < a$: $X = X'$
 
 期望值技术不改变状态转移决策，只是更平滑地覆盖 f 较低的区域，加快收敛。
 
@@ -1089,18 +1049,18 @@ for i = 1 to n:
 
 | 策略 | 说明 | 对称性 |
 |------|------|--------|
-| **随机扰动** | X′ᵢ = (Xᵢ ± scaled random)，对某些维度加/减缩放后的随机数，边界用 wrap 处理 | 对称 |
-| **完全重采样** | 丢弃当前样本，用均匀随机数生成全新 X′ | 对称 |
-| **按近似 PDF 采样** | 用与 f 某分量近似的 PDF p 采样 X′，此时 T(X→X′) = p(X′)（与 X 无关） | 非对称 |
+| **随机扰动** | $X'_i = (X_i \pm \text{scaled random})$，对某些维度加/减缩放后的随机数，边界用 wrap 处理 | 对称 |
+| **完全重采样** | 丢弃当前样本，用均匀随机数生成全新 $X'$ | 对称 |
+| **按近似 PDF 采样** | 用与 f 某分量近似的 PDF p 采样 $X'$，此时 $T(X \to X') = p(X')$（与 $X$ 无关） | 非对称 |
 
 设计原则：
 - **大变异**快速探索状态空间，但 f 值大处易被拒绝
 - **小变异**在 f 值大处接受率高，但探索慢
-- 必须保证**各态遍历性（ergodicity）**：对所有 T(X→X′) > 0，能以非零概率到达所有 f(X) > 0 的状态——周期性完全重采样是保证各态遍历的常用手段
+- 必须保证**各态遍历性（ergodicity）**：对所有 $T(X \to X') > 0$，能以非零概率到达所有 $f(X) > 0$ 的状态——周期性完全重采样是保证各态遍历的常用手段
 
 #### 6. 启动偏差（Start-up Bias）
 
-初始样本 X₀ 如何选取？若 X₀ 不服从 f 的分布，会引入**启动偏差**。
+初始样本 $X_0$ 如何选取？若 $X_0$ 不服从 f 的分布，会引入**启动偏差**。
 
 两种解决方法：
 
@@ -1108,41 +1068,35 @@ for i = 1 to n:
 从任意状态运行若干轮迭代并丢弃样本，假设链已收敛。缺点：燃烧成本高，且难以判断需要多少轮。
 
 **方法二：加权初始化（PBRT 采用）**
-用其他采样方法（密度 p）得到候选 X₀，对所有后续样本乘以权重：
+用其他采样方法（密度 p）得到候选 $X_0$，对所有后续样本乘以权重：
 
-```
-w = f(X₀) / p(X₀)
-```
+$$w = \frac{f(X_0)}{p(X_0)}$$
 
-为降低方差，可采样多个候选 {X₀¹, X₀², ..., X₀ⁿ}，各自算 wⱼ = f(X₀ʲ)/p(X₀ʲ)，按权重正比于 wⱼ 选一个作为起点，最终样本权重 = 所有 wⱼ 的平均。
+为降低方差，可采样多个候选 $\{X_0^1, X_0^2, \ldots, X_0^n\}$，各自算 $w_j = f(X_0^j)/p(X_0^j)$，按权重正比于 $w_j$ 选一个作为起点，最终样本权重 = 所有 $w_j$ 的平均。
 
 #### 7. 一维示例（PBRT 13.4.4）
 
-PBRT 用一个 1D 函数 f(x)（在 [0,1] 区间有两个峰）演示 Metropolis：
+PBRT 用一个 1D 函数 $f(x)$（在 $[0,1]$ 区间有两个峰）演示 Metropolis：
 
-- **变异策略 X₁**：完全丢弃当前样本，在整个 [0,1] 均匀采样新值（对称，T=1）
-- **变异策略 X₂**：在当前样本上加 [−δ, +δ] 的随机偏移（对称）
+- **变异策略 $X_1$**：完全丢弃当前样本，在整个 $[0,1]$ 均匀采样新值（对称，$T=1$）
+- **变异策略 $X_2$**：在当前样本上加 $[-\delta, +\delta]$ 的随机偏移（对称）
 
 实验对比：
-- 仅用 X₁：能收敛但方差大，不利用已发现的高值区域
-- X₁ + X₂（比例 1:9）：同样样本数下方差显著降低，因 X₂ 能在高值区域附近多采样
-- 仅用 X₂：会"卡"在 f 的一侧，难以越过 f 值低的"谷"——即使 30 万次样本也难以收敛（违反各态遍历的实践效率）
+- 仅用 $X_1$：能收敛但方差大，不利用已发现的高值区域
+- $X_1 + X_2$（比例 1:9）：同样样本数下方差显著降低，因 $X_2$ 能在高值区域附近多采样
+- 仅用 $X_2$：会"卡"在 f 的一侧，难以越过 f 值低的"谷"——即使 30 万次样本也难以收敛（违反各态遍历的实践效率）
 
-**关键启示**：周期性完全重采样（X₁）对保证各态遍历至关重要。
+**关键启示**：周期性完全重采样（$X_1$）对保证各态遍历至关重要。
 
 #### 8. 用 Metropolis 估计积分（PBRT 13.4.5）
 
-Metropolis 样本可用于估计积分 ∫f(x)dx。标准 MC 估计器（式 13.3）：
+Metropolis 样本可用于估计积分 $\int f(x) \, dx$。标准 MC 估计器（式 13.3）：
 
-```
-F_N = (1/N) · Σ f(Xᵢ) / p(Xᵢ)
-```
+$$F_N = \frac{1}{N} \cdot \sum \frac{f(X_i)}{p(X_i)}$$
 
-若用 Metropolis 生成服从密度正比于 f 的样本 {Xᵢ}，则 p(Xᵢ) = f(Xᵢ) / ∫f，于是 f(Xᵢ)/p(Xᵢ) = ∫f（常数），积分估计简化为：
+若用 Metropolis 生成服从密度正比于 f 的样本 $\{X_i\}$，则 $p(X_i) = f(X_i) / \int f$，于是 $f(X_i)/p(X_i) = \int f$（常数），积分估计简化为：
 
-```
-∫f(x)dx ≈ (1/N) · Σ [∫f] = ∫f
-```
+$$\int f(x) \, dx \approx \frac{1}{N} \cdot \sum \left[\int f\right] = \int f$$
 
 这看似循环，但实际意义在于：Metropolis 光传输（MLT，§16.4）中 f 是路径贡献函数，通过 Metropolis 采样可高效估计像素积分，尤其对困难光路（焦散、强间接光照）比普通路径追踪更高效。
 
@@ -1182,21 +1136,17 @@ F_N = (1/N) · Σ f(Xᵢ) / p(Xᵢ)
 
 马尔科夫链假设某一时刻状态转移的概率**只依赖前一个状态**：
 
-```
-P(X_{t+1} | ..., X_{t-1}, X_t) = P(X_{t+1} | X_t)
-```
+$$P(X_{t+1} \mid \ldots, X_{t-1}, X_t) = P(X_{t+1} \mid X_t)$$
 
 形象比喻：今天是否晴天只依赖昨天的天气，与前天无关。这大大简化了模型复杂度，在时间序列模型（RNN、HMM）和 MCMC 中广泛应用。
 
 ##### A.2 状态转移矩阵
 
-设系统有有限状态，记 P_ij = P(X_{t+1}=s_j | X_t=s_i)，则状态分布的演化：
+设系统有有限状态，记 $P_{ij} = P(X_{t+1}=s_j \mid X_t=s_i)$，则状态分布的演化：
 
-```
-π_{t+1} = π_t · P
-```
+$$\pi_{t+1} = \pi_t \cdot P$$
 
-其中 P 为状态转移矩阵（行和为 1），π_t 为 t 时刻的状态分布向量（行向量，分量和为 1）。
+其中 $P$ 为状态转移矩阵（行和为 1），$\pi_t$ 为 t 时刻的状态分布向量（行向量，分量和为 1）。
 
 ##### A.3 平稳分布
 
@@ -1207,11 +1157,9 @@ P(X_{t+1} | ..., X_{t-1}, X_t) = P(X_{t+1} | X_t)
 
 则无论初始分布如何，经过足够多次转移，链趋于**平稳分布 π**：
 
-```
-π = lim_{t→∞}  π_0 · P^t
+$$\pi = \lim_{t \to \infty} \pi_0 \cdot P^t$$
 
-平稳分布性质：π = π · P    （转移后分布不变）
-```
+平稳分布性质：$\pi = \pi \cdot P$    （转移后分布不变）
 
 ##### A.4 基于马尔科夫链的采样
 
@@ -1225,112 +1173,84 @@ P(X_{t+1} | ..., X_{t-1}, X_t) = P(X_{t+1} | X_t)
 
 ##### B.1 细致平稳条件
 
-若非周期马尔科夫链的转移矩阵 P 和分布 π 对所有 i,j 满足：
+若非周期马尔科夫链的转移矩阵 $P$ 和分布 $\pi$ 对所有 $i,j$ 满足：
 
-```
-π(i) · P(i,j) = π(j) · P(j,i)
-```
+$$\pi(i) \cdot P(i,j) = \pi(j) \cdot P(j,i)$$
 
-则 π 是 P 的平稳分布。这称为**细致平稳条件（Detailed Balance）**。
+则 $\pi$ 是 $P$ 的平稳分布。这称为**细致平稳条件（Detailed Balance）**。
 
-**证明**：两边对 i 求和
+**证明**：两边对 $i$ 求和
 
-```
-∑_i π(i)·P(i,j) = ∑_i π(j)·P(j,i)
-                = π(j) · ∑_i P(j,i)
-                = π(j) · 1            （P 行和为 1）
-                = π(j)
-```
+$$\sum_i \pi(i) \cdot P(i,j) = \sum_i \pi(j) \cdot P(j,i)$$
+$$= \pi(j) \cdot \sum_i P(j,i)$$
+$$= \pi(j) \cdot 1 \quad (P \text{ 行和为 1})$$
+$$= \pi(j)$$
 
-即 πP = π，π 为 P 的平稳分布。
+即 $\pi P = \pi$，$\pi$ 为 $P$ 的平稳分布。
 
 ##### B.2 MCMC 采样的核心思想
 
-随便找一个转移矩阵 Q，一般**不满足**细致平稳条件：
+随便找一个转移矩阵 $Q$，一般**不满足**细致平稳条件：
 
-```
-π(i) · Q(i,j) ≠ π(j) · Q(j,i)
-```
+$$\pi(i) \cdot Q(i,j) \ne \pi(j) \cdot Q(j,i)$$
 
-**解决思路**：引入接受率 α(i,j) ∈ [0,1]，构造新转移矩阵 P(i,j) = Q(i,j)·α(i,j)，使细致平稳条件成立：
+**解决思路**：引入接受率 $\alpha(i,j) \in [0,1]$，构造新转移矩阵 $P(i,j) = Q(i,j) \cdot \alpha(i,j)$，使细致平稳条件成立：
 
-```
-π(i) · Q(i,j) · α(i,j) = π(j) · Q(j,i) · α(j,i)
-```
+$$\pi(i) \cdot Q(i,j) \cdot \alpha(i,j) = \pi(j) \cdot Q(j,i) \cdot \alpha(j,i)$$
 
 取：
 
-```
-α(i,j) = π(j) · Q(j,i)
-α(j,i) = π(i) · Q(i,j)
-```
+$$\alpha(i,j) = \pi(j) \cdot Q(j,i)$$
+$$\alpha(j,i) = \pi(i) \cdot Q(i,j)$$
 
-即可满足。α(i,j) 称为**接受率**，类似拒绝采样中的接受概率。
+即可满足。$\alpha(i,j)$ 称为**接受率**，类似拒绝采样中的接受概率。
 
 ##### B.3 MCMC 采样算法
 
-```
-输入：转移矩阵 Q，平稳分布 π(x)，燃烧期 n1，样本数 n2
-初始化：x0 ~ 任意简单分布
-
-for t = 0 to n1+n2-1:
-    a) 从 Q(x | x_t) 采样提议 x*
-    b) 采样 u ~ Uniform(0,1)
-    c) 若 u < α(x_t, x*) = π(x*)·Q(x* | x_t):
-       接受：x_{t+1} = x*
-    d) 否则：x_{t+1} = x_t
-
-返回样本集 {x_n1, ..., x_n1+n2-1}
-```
+- **输入**：转移矩阵 $Q$，平稳分布 $\pi(x)$，燃烧期 $n_1$，样本数 $n_2$
+- **初始化**：$x_0 \sim$ 任意简单分布
+- **for** $t = 0$ **to** $n_1 + n_2 - 1$:
+    - a) 从 $Q(x \mid x_t)$ 采样提议 $x^*$
+    - b) 采样 $u \sim \text{Uniform}(0,1)$
+    - c) 若 $u < \alpha(x_t, x^*) = \pi(x^*) \cdot Q(x^* \mid x_t)$：接受，$x_{t+1} = x^*$
+    - d) 否则：$x_{t+1} = x_t$
+- **返回**样本集 $\{x_{n_1}, \ldots, x_{n_1+n_2-1}\}$
 
 ##### B.4 MCMC 的问题
 
-接受率 α(i,j) 可能非常小（如 0.1），导致**大部分采样被拒绝**，链收敛极慢，燃烧期 n1 需要非常大。
+接受率 $\alpha(i,j)$ 可能非常小（如 0.1），导致**大部分采样被拒绝**，链收敛极慢，燃烧期 $n_1$ 需要非常大。
 
 ##### B.5 M-H 采样（Metropolis-Hastings）
 
-**核心改进**：放大接受率。若 α(i,j)=0.1、α(j,i)=0.2，两边同乘 5 倍 → α(i,j)=0.5、α(j,i)=1.0，**细致平稳条件仍成立**，但接受率最大化。
+**核心改进**：放大接受率。若 $\alpha(i,j)=0.1$、$\alpha(j,i)=0.2$，两边同乘 5 倍 → $\alpha(i,j)=0.5$、$\alpha(j,i)=1.0$，**细致平稳条件仍成立**，但接受率最大化。
 
 改进后的接受率（M-H 公式）：
 
-```
-                π(j) · Q(j,i)
-α(i,j) = min[1, ――――――――――――――――]
-                π(i) · Q(i,j)
-```
+$$\alpha(i,j) = \min\left[1, \frac{\pi(j) \cdot Q(j,i)}{\pi(i) \cdot Q(i,j)}\right]$$
 
-**对称情形简化**：若 Q(i,j) = Q(j,i)，则：
+**对称情形简化**：若 $Q(i,j) = Q(j,i)$，则：
 
-```
-                π(j)
-α(i,j) = min[1, ――――]
-                π(i)
-```
+$$\alpha(i,j) = \min\left[1, \frac{\pi(j)}{\pi(i)}\right]$$
 
 这就是 PBRT 13.4.1 中对称变异的简化形式。
 
 ##### B.6 M-H 采样算法
 
-```
-输入：转移矩阵 Q，平稳分布 π(x)，燃烧期 n1，样本数 n2
-初始化：x0 ~ 任意简单分布
-
-for t = 0 to n1+n2-1:
-    a) 从 Q(x | x_t) 采样提议 x*
-    b) 采样 u ~ Uniform(0,1)
-    c) 若 u < α(x_t, x*) = min[1, π(x*)·Q(x*|x_t) / (π(x_t)·Q(x_t|x*))]:
-       接受：x_{t+1} = x*
-    d) 否则：x_{t+1} = x_t
-
-返回样本集 {x_n1, ..., x_n1+n2-1}
-```
+- **输入**：转移矩阵 $Q$，平稳分布 $\pi(x)$，燃烧期 $n_1$，样本数 $n_2$
+- **初始化**：$x_0 \sim$ 任意简单分布
+- **for** $t = 0$ **to** $n_1 + n_2 - 1$:
+    - a) 从 $Q(x \mid x_t)$ 采样提议 $x^*$
+    - b) 采样 $u \sim \text{Uniform}(0,1)$
+    - c) 若 $u < \alpha(x_t, x^*) = \min\left[1, \frac{\pi(x^*) \cdot Q(x^*|x_t)}{\pi(x_t) \cdot Q(x_t|x^*)}\right]$：接受，$x_{t+1} = x^*$
+    - d) 否则：$x_{t+1} = x_t$
+- **返回**样本集 $\{x_{n_1}, \ldots, x_{n_1+n_2-1}\}$
 
 ##### B.7 M-H 采样的两大局限（引出 Gibbs）
 
 | 局限 | 说明 |
 |------|------|
-| **高维计算量大** | α 公式含 π(j)Q(j,i)/[π(i)Q(i,j)]，高维时计算昂贵，且 α<1 仍会拒绝样本 |
-| **联合分布难求** | 高维时往往求不出联合分布 π(x)，但能方便求各维度间的**条件概率分布** |
+| **高维计算量大** | $\alpha$ 公式含 $\pi(j)Q(j,i)/[\pi(i)Q(i,j)]$，高维时计算昂贵，且 $\alpha < 1$ 仍会拒绝样本 |
+| **联合分布难求** | 高维时往往求不出联合分布 $\pi(x)$，但能方便求各维度间的**条件概率分布** |
 
 这两个问题由 **Gibbs 采样**解决。
 
@@ -1344,60 +1264,51 @@ M-H 通过接受率使细致平稳条件成立。Gibbs 换一个思路：**利�
 
 ##### C.2 二维情形的发现
 
-设 π(x₁, x₂) 是二维联合分布。观察第一个特征维度相同的两点 A(x₁⁽¹⁾, x₂⁽¹⁾) 和 B(x₁⁽¹⁾, x₂⁽²⁾)：
+设 $\pi(x_1, x_2)$ 是二维联合分布。观察第一个特征维度相同的两点 $A(x_1^{(1)}, x_2^{(1)})$ 和 $B(x_1^{(1)}, x_2^{(2)})$：
 
-```
-π(A) · π(x₂⁽²⁾ | x₁⁽¹⁾) = π(x₁⁽¹⁾) · π(x₂⁽¹⁾|x₁⁽¹⁾) · π(x₂⁽²⁾|x₁⁽¹⁾)
-π(B) · π(x₂⁽¹⁾ | x₁⁽¹⁾) = π(x₁⁽¹⁾) · π(x₂⁽²⁾|x₁⁽¹⁾) · π(x₂⁽¹⁾|x₁⁽¹⁾)
-```
+$$\pi(A) \cdot \pi(x_2^{(2)} | x_1^{(1)}) = \pi(x_1^{(1)}) \cdot \pi(x_2^{(1)}|x_1^{(1)}) \cdot \pi(x_2^{(2)}|x_1^{(1)})$$
+
+$$\pi(B) \cdot \pi(x_2^{(1)} | x_1^{(1)}) = \pi(x_1^{(1)}) \cdot \pi(x_2^{(2)}|x_1^{(1)}) \cdot \pi(x_2^{(1)}|x_1^{(1)})$$
 
 两式右边相等，故：
 
-```
-π(A) · π(x₂⁽²⁾ | x₁⁽¹⁾) = π(B) · π(x₂⁽¹⁾ | x₁⁽¹⁾)
-```
+$$\pi(A) \cdot \pi(x_2^{(2)} | x_1^{(1)}) = \pi(B) \cdot \pi(x_2^{(1)} | x_1^{(1)})$$
 
-这正是 A、B 两点在 x₁ = x₁⁽¹⁾ 这条直线上的**细致平稳条件**！状态转移概率取条件概率 π(x₂|x₁⁽¹⁾) 即可。
+这正是 A、B 两点在 $x_1 = x_1^{(1)}$ 这条直线上的**细致平稳条件**！状态转移概率取条件概率 $\pi(x_2|x_1^{(1)})$ 即可。
 
-同理，在 x₂ = x₂⁽¹⁾ 直线上，用 π(x₁|x₂⁽¹⁾) 作为转移概率也满足细致平稳条件。
+同理，在 $x_2 = x_2^{(1)}$ 直线上，用 $\pi(x_1|x_2^{(1)})$ 作为转移概率也满足细致平稳条件。
 
 ##### C.3 二维 Gibbs 采样算法
 
-```
-输入：平稳分布 π(x₁, x₂)，燃烧期 n1，样本数 n2
-初始化：x₁⁽⁰⁾, x₂⁽⁰⁾
+- **输入**：平稳分布 $\pi(x_1, x_2)$，燃烧期 $n_1$，样本数 $n_2$
+- **初始化**：$x_1^{(0)}, x_2^{(0)}$
+- **for** $t = 0$ **to** $n_1 + n_2 - 1$:
+    - a) 从 $P(x_2 \mid x_1^{(t)})$ 采样 $x_2^{(t+1)}$
+    - b) 从 $P(x_1 \mid x_2^{(t+1)})$ 采样 $x_1^{(t+1)}$
+- **返回**样本集 $\{(x_1^{(n_1)}, x_2^{(n_1)}), \ldots, (x_1^{(n_1+n_2-1)}, x_2^{(n_1+n_2-1)})\}$
 
-for t = 0 to n1+n2-1:
-    a) 从 P(x₂ | x₁⁽ᵗ⁾) 采样 x₂⁽ᵗ⁺¹⁾
-    b) 从 P(x₁ | x₂⁽ᵗ⁺¹⁾) 采样 x₁⁽ᵗ⁺¹⁾
-
-返回样本集 {(x₁⁽ⁿ¹⁾, x₂⁽ⁿ¹⁾), ..., (x₁⁽ⁿ¹⁺ⁿ²⁻¹⁾, x₂⁽ⁿ¹⁺ⁿ²⁻¹⁾)}
-```
+> 其中 $x_1^{(t)}$ 表示第 t 次迭代时 $x_1$ 的取值，$P(x_2 \mid x_1^{(t)})$ 表示给定 $x_1^{(t)}$ 时 $x_2$ 的条件概率分布。
 
 采样过程在两个坐标轴上轮换：
 
-```
-(x₁⁽¹⁾, x₂⁽¹⁾) → (x₁⁽¹⁾, x₂⁽²⁾) → (x₁⁽²⁾, x₂⁽²⁾) → ...
-```
+$$(x_1^{(1)}, x_2^{(1)}) \to (x_1^{(1)}, x_2^{(2)}) \to (x_1^{(2)}, x_2^{(2)}) \to \ldots$$
 
 ##### C.4 多维 Gibbs 采样
 
-推广到 n 维分布 π(x₁, x₂, ..., xₙ)：在 n 个坐标轴上轮换采样，每次固定其他 n−1 个维度，对当前维度按条件概率采样。
+推广到 n 维分布 $\pi(x_1, x_2, \ldots, x_n)$：在 n 个坐标轴上轮换采样，每次固定其他 n−1 个维度，对当前维度按条件概率采样。
 
-```
-输入：平稳分布 π(x₁,...,xₙ) 或所有条件概率分布
-初始化：(x₁⁽⁰⁾, ..., xₙ⁽⁰⁾)
+- **输入**：平稳分布 $\pi(x_1, \ldots, x_n)$ 或所有条件概率分布
+- **初始化**：$(x_1^{(0)}, \ldots, x_n^{(0)})$
+- **for** $t = 0$ **to** $n_1 + n_2 - 1$:
+    - 从 $P(x_1 \mid x_2^{(t)}, x_3^{(t)}, \ldots, x_n^{(t)})$ 采样 $x_1^{(t+1)}$
+    - 从 $P(x_2 \mid x_1^{(t+1)}, x_3^{(t)}, \ldots, x_n^{(t)})$ 采样 $x_2^{(t+1)}$
+    - $\ldots$
+    - 从 $P(x_j \mid x_1^{(t+1)}, \ldots, x_{j-1}^{(t+1)}, x_{j+1}^{(t)}, \ldots, x_n^{(t)})$ 采样 $x_j^{(t+1)}$
+    - $\ldots$
+    - 从 $P(x_n \mid x_1^{(t+1)}, \ldots, x_{n-1}^{(t+1)})$ 采样 $x_n^{(t+1)}$
+- **返回**样本集
 
-for t = 0 to n1+n2-1:
-    从 P(x₁ | x₂⁽ᵗ⁾, x₃⁽ᵗ⁾, ..., xₙ⁽ᵗ⁾) 采样 x₁⁽ᵗ⁺¹⁾
-    从 P(x₂ | x₁⁽ᵗ⁺¹⁾, x₃⁽ᵗ⁾, ..., xₙ⁽ᵗ⁾) 采样 x₂⁽ᵗ⁺¹⁾
-    ...
-    从 P(xⱼ | x₁⁽ᵗ⁺¹⁾, ..., xⱼ₋₁⁽ᵗ⁺¹⁾, xⱼ₊₁⁽ᵗ⁾, ..., xₙ⁽ᵗ⁾) 采样 xⱼ⁽ᵗ⁺¹⁾
-    ...
-    从 P(xₙ | x₁⁽ᵗ⁺¹⁾, ..., xₙ₋₁⁽ᵗ⁺¹⁾) 采样 xₙ⁽ᵗ⁺¹⁾
-
-返回样本集
-```
+> 其中 $x_j^{(t)}$ 表示第 t 次迭代时第 j 维的取值，$P(x_j \mid x_1^{(t+1)}, \ldots, x_{j-1}^{(t+1)}, x_{j+1}^{(t)}, \ldots, x_n^{(t)})$ 表示固定其他维度后 $x_j$ 的条件概率分布。
 
 这与 Lasso 回归的**坐标轴下降法**类似：都是固定 n−1 个维度，对一个维度操作。区别在于 Gibbs 是采样，坐标轴下降是求极值。
 
@@ -1452,7 +1363,7 @@ PBRT 13.4 的 Metropolis 采样是 MCMC 方法在渲染中的应用基础：
 平稳分布：    正比于 f，即高贡献路径被采样概率大
 ```
 
-PBRT 的 **Metropolis 光传输（MLT，§16.4）** 即基于此：对困难场景（焦散、强间接光照、复杂光路）比普通路径追踪更高效，因为能"记住"高贡献路径并探索其邻域。PBRT 使用的是对称变异（随机扰动 + 周期性重采样），对应 M-H 的对称简化形式 α = min[1, f(X′)/f(X)]。
+PBRT 的 **Metropolis 光传输（MLT，§16.4）** 即基于此：对困难场景（焦散、强间接光照、复杂光路）比普通路径追踪更高效，因为能"记住"高贡献路径并探索其邻域。PBRT 使用的是对称变异（随机扰动 + 周期性重采样），对应 M-H 的对称简化形式 $\alpha = \min[1, f(X')/f(X)]$。
 
 
 ## 13.5 Transforming between Distributions
@@ -1463,36 +1374,32 @@ PBRT 的 **Metropolis 光传输（MLT，§16.4）** 即基于此：对困难场�
 
 **已知如何从分布 p(x) 采样，如何通过对样本做变换得到另一个目标分布 q(y) 的样本？**
 
-即：给定 X ~ p(x) 和变换 y = f(x)，求 Y = f(X) 的分布 q(y)，以及如何用它做采样。
+即：给定 $X \sim p(x)$ 和变换 $y = f(x)$，求 $Y = f(X)$ 的分布 $q(y)$，以及如何用它做采样。
 
 #### 三大主题
 
 ##### 1. 单变量变换的分布推导
 
-给定 y = f(x)，已知 X 的密度 p(x)，求 Y 的密度 q(y)：
+给定 $y = f(x)$，已知 $X$ 的密度 $p(x)$，求 $Y$ 的密度 $q(y)$：
 
-```
-q(y) = p(x) · |dx/dy| = p(f⁻¹(y)) · |d(f⁻¹)/dy|
-```
+$$q(y) = p(x) \cdot \left|\frac{dx}{dy}\right| = p(f^{-1}(y)) \cdot \left|\frac{d(f^{-1})}{dy}\right|$$
 
 **关键**：变换后的密度 = 原密度 × **雅可比行列式的绝对值**。
 
-- 一维：雅可比就是 |dx/dy|
-- 多维：雅可比是行列式 |det(∂x/∂y)|
+- 一维：雅可比就是 $|dx/dy|$
+- 多维：雅可比是行列式 $|\det(\partial x / \partial y)|$
 
 ##### 2. 极坐标 / 球面坐标变换
 
 经典应用——从笛卡尔分布变换到极坐标/球面坐标的采样：
 
-**极坐标**（2D）：x = r·cosθ, y = r·sinθ
-```
-|det J| = r     →  q(r,θ) = p(x,y) · r
-```
+**极坐标**（2D）：$x = r \cdot \cos\theta, \; y = r \cdot \sin\theta$
 
-**球面坐标**（3D）：x = r·sinθ·cosφ, y = r·sinθ·sinφ, z = r·cosθ
-```
-|det J| = r²·sinθ  →  q(r,θ,φ) = p(x,y,z) · r²·sinθ
-```
+$$|\det J| = r \quad \Rightarrow \quad q(r,\theta) = p(x,y) \cdot r$$
+
+**球面坐标**（3D）：$x = r \cdot \sin\theta \cdot \cos\phi, \; y = r \cdot \sin\theta \cdot \sin\phi, \; z = r \cdot \cos\theta$
+
+$$|\det J| = r^2 \cdot \sin\theta \quad \Rightarrow \quad q(r,\theta,\phi) = p(x,y,z) \cdot r^2 \cdot \sin\theta$$
 
 **为什么 PBRT 要讲这个**：渲染中常需要在半球面上按某种密度采样方向（如余弦加权），这天然是球面坐标问题。
 
@@ -1500,20 +1407,16 @@ q(y) = p(x) · |dx/dy| = p(f⁻¹(y)) · |d(f⁻¹)/dy|
 
 **均匀半球采样**的推导（经典例子）：
 
-希望方向均匀分布在单位半球上，即 q(ω) = 1/(2π)。用球面坐标：
+希望方向均匀分布在单位半球上，即 $q(\omega) = 1/(2\pi)$。用球面坐标：
 
-```
-q(θ,φ) = q(ω) · |det J| = (1/(2π)) · sinθ
-```
+$$q(\theta,\phi) = q(\omega) \cdot |\det J| = \frac{1}{2\pi} \cdot \sin\theta$$
 
-分离变量：q(θ,φ) = q_θ(θ) · q_φ(φ)
+分离变量：$q(\theta,\phi) = q_\theta(\theta) \cdot q_\phi(\phi)$
 
-```
-q_φ(φ) = 1/(2π)              → φ = 2π·ξ₁
-q_θ(θ) = sinθ/2              → θ = arccos(1 - ξ₂)
-```
+$$q_\phi(\phi) = \frac{1}{2\pi} \quad \Rightarrow \quad \phi = 2\pi \cdot \xi_1$$
+$$q_\theta(\theta) = \frac{\sin\theta}{2} \quad \Rightarrow \quad \theta = \arccos(1 - \xi_2)$$
 
-**结论**：两个均匀随机数 ξ₁, ξ₂ → 一个半球均匀采样方向。
+**结论**：两个均匀随机数 $\xi_1, \xi_2$ → 一个半球均匀采样方向。
 
 #### 在 PBRT 中的地位
 
@@ -1649,6 +1552,7 @@ Gibbs采样
 ## 14.5 Path Tracing
 一个积分器 代码实现解读https://blog.csdn.net/libing_zeng/article/details/75093237
 
+Path tracing was the first general-purpose unbiased Monte Carlo light transport algorithm used in graphics. Kajiya (1986) introduced it in the same paper that first described the light transport equation. Path tracing incrementally generates paths of scattering events starting at the camera and ending at light sources in the scene. One way to think of it is as an extension of Whitted’s method to include both delta distribution and nondelta BSDFs and light sources, rather than just accounting for the delta terms.
 ---
 
 ## 14.6 从渲染方程到 LTE 的完整推导
@@ -1657,61 +1561,47 @@ Gibbs采样
 
 ### 第一步：基本渲染方程（反射方程）
 
-```
-Lₒ(p, ωₒ) = Lₑ(p, ωₒ) + ∫(Ω) fᵣ(p, ωᵢ→ωₒ) · Lᵢ(p, ωᵢ) · cosθᵢ · dωᵢ
-```
+$$L_o(p, \omega_o) = L_e(p, \omega_o) + \int_\Omega f_r(p, \omega_i \to \omega_o) \cdot L_i(p, \omega_i) \cdot \cos\theta_i \, d\omega_i$$
 
-此时 Lᵢ(p, ωᵢ) 是一个**未知的入射量**——我们不知道它从哪来。
+此时 $L_i(p, \omega_i)$ 是一个**未知的入射量**——我们不知道它从哪来。
 
 ### 第二步：关键代入 — Lᵢ 是另一个点的 Lₒ
 
-核心洞察：**从 p 点沿 ωᵢ 方向来的光，就是场景中另一个点 p' 沿 -ωᵢ 方向出去的光**。
+核心洞察：**从 p 点沿 $\omega_i$ 方向来的光，就是场景中另一个点 p' 沿 $-\omega_i$ 方向出去的光**。
 
-```
-p' = scene中从p沿ωᵢ方向射线打到的第一个表面点
+$$p' = \text{scene中从p沿}\omega_i\text{方向射线打到的第一个表面点}$$
 
-Lᵢ(p, ωᵢ) = Lₒ(p', -ωᵢ)
-```
+$$L_i(p, \omega_i) = L_o(p', -\omega_i)$$
 
 这个代入把"未知入射量"变成了"另一个点的出射量"，渲染方程变成**递归形式**：
 
-```
-Lₒ(p, ωₒ) = Lₑ(p, ωₒ) + ∫(Ω) fᵣ(p, ωᵢ→ωₒ) · Lₒ(p', -ωᵢ) · cosθᵢ · dωᵢ
-                                       ^^^^^^^^^^^^^^^^
-                                       递归：又是Lₒ
-```
+$$L_o(p, \omega_o) = L_e(p, \omega_o) + \int_\Omega f_r(p, \omega_i \to \omega_o) \cdot L_o(p', -\omega_i) \cdot \cos\theta_i \, d\omega_i$$
 
-**这就是 LTE**（Light Transport Equation）。它和渲染方程是**同一个东西**，只是把 Lᵢ 替换成了 Lₒ，显式地暴露了递归结构。
+$$\underbrace{\qquad\qquad\qquad\qquad\qquad}_{\text{递归：又是 } L_o}$$
+
+**这就是 LTE**（Light Transport Equation）。它和渲染方程是**同一个东西**，只是把 $L_i$ 替换成了 $L_o$，显式地暴露了递归结构。
 
 ### 第三步：从立体角积分到面积积分（三点式）
 
-递归形式仍是**对方向的积分**（dω），不方便直接采样。利用立体角与面积的关系：
+递归形式仍是**对方向的积分**（$d\omega$），不方便直接采样。利用立体角与面积的关系：
 
-```
-dω = dA · cosθ' / r²    （θ' 是 p' 处法线与方向的夹角，r 是 pp' 距离）
-```
+$$d\omega = \frac{dA \cdot \cos\theta'}{r^2} \quad (\theta' \text{ 是 } p' \text{ 处法线与方向的夹角，} r \text{ 是 } pp' \text{ 距离})$$
 
 代入后，积分从"对半球方向"变为"对场景所有表面"：
 
-```
-Lₒ(p→p₀) = Lₑ(p→p₀) + ∫(A) fᵣ(p''→p→p₀) · Lₒ(p''→p) · G(p↔p'') · dA''
-```
+$$L_o(p \to p_0) = L_e(p \to p_0) + \int_A f_r(p'' \to p \to p_0) \cdot L_o(p'' \to p) \cdot G(p \leftrightarrow p'') \, dA''$$
 
-其中几何项 **G = cosθ · cosθ' / r²**，这就是**三点式（three-point form）**——三个点 p₀(相机), p(着色点), p''(入射点)。
+其中几何项 $G = \frac{\cos\theta \cdot \cos\theta'}{r^2}$，这就是**三点式（three-point form）**——三个点 $p_0$(相机), $p$(着色点), $p''$(入射点)。
 
 ### 第四步：从递归到路径积分（path integral form）
 
-递归形式是**隐式的**（Lₒ 的定义里还含 Lₒ）。把递归**展开** k 次：
+递归形式是**隐式的**（$L_o$ 的定义里还含 $L_o$）。把递归**展开** k 次：
 
-```
-Lₒ(p₀→camera) = Σ(k=1→∞) ∫∫...∫ Lₑ(pₖ→pₖ₋₁) · [Π(i=1→k-1) fᵣ·G] · dA₁...dAₖ
-```
+$$L_o(p_0 \to \text{camera}) = \sum_{k=1}^{\infty} \int \cdots \int L_e(p_k \to p_{k-1}) \cdot \left[\prod_{i=1}^{k-1} f_r \cdot G\right] \, dA_1 \ldots dA_k$$
 
 变成一个**显式的多重积分**——对所有长度为 k 的路径求和。被积函数就是**路径吞吐量（throughput）**的连乘：
 
-```
-throughput = Π(i=1→k-1) [fᵣ(pᵢ₊₁→pᵢ→pᵢ₋₁) · G(pᵢ↔pᵢ₊₁)]
-```
+$$\text{throughput} = \prod_{i=1}^{k-1} \left[f_r(p_{i+1} \to p_i \to p_{i-1}) \cdot G(p_i \leftrightarrow p_{i+1})\right]$$
 
 从隐式递归变成了显式积分，可以直接用蒙特卡洛采样。
 
@@ -1735,10 +1625,10 @@ Path Tracing 算法
 
 每一步的核心目的：
 
-1. **代入 Lᵢ=Lₒ**：暴露递归结构，说明光是"弹来弹去"的
-2. **dω→dA**：把"对方向积分"变成"对场景表面积分"，便于在场景中采点
-3. **递归展开**：从"Lₒ 定义自身"的隐式方程，变成"对所有路径求和"的显式积分
-4. **蒙特卡洛**：对路径空间随机采样，每条路径算一次 throughput × Lₑ
+1. **代入 $L_i = L_o$**：暴露递归结构，说明光是"弹来弹去"的
+2. **$d\omega \to dA$**：把"对方向积分"变成"对场景表面积分"，便于在场景中采点
+3. **递归展开**：从"$L_o$ 定义自身"的隐式方程，变成"对所有路径求和"的显式积分
+4. **蒙特卡洛**：对路径空间随机采样，每条路径算一次 throughput × $L_e$
 
 ---
 
@@ -1896,14 +1786,14 @@ https://blog.csdn.net/libing_zeng/article/details/77600436
 
 #### 1. 反射定律的体现
 反射定律是**所有表面反射计算的基石**。
-*   **在完美镜面BRDF中**：它直接决定了反射光的方向。给定入射方向 `ω_i` 和法线 `n`，反射方向 `ω_r` 必须严格满足 `ω_r = reflect(ω_i, n)`。任何不满足此方向的光线贡献为零。
-*   **在微表面理论模型中**：这是理解的核心。像Cook-Torrance这样的BRDF模型认为，粗糙表面由无数微小的完美镜面组成。**只有当微表面的法线 `m` 恰好是入射方向 `ω_i` 和出射方向 `ω_o` 的中间向量（即半程向量 `h`）时**，该微表面才能将光从 `ω_i` 反射到 `ω_o`。这个条件 **“微表面法线等于半程向量”** 正是反射定律在统计意义上的体现。
+*   **在完美镜面BRDF中**：它直接决定了反射光的方向。给定入射方向 $\omega_i$ 和法线 $n$，反射方向 $\omega_r$ 必须严格满足 $\omega_r = \text{reflect}(\omega_i, n)$。任何不满足此方向的光线贡献为零。
+*   **在微表面理论模型中**：这是理解的核心。像Cook-Torrance这样的BRDF模型认为，粗糙表面由无数微小的完美镜面组成。**只有当微表面的法线 $m$ 恰好是入射方向 $\omega_i$ 和出射方向 $\omega_o$ 的中间向量（即半程向量 $h$）时**，该微表面才能将光从 $\omega_i$ 反射到 $\omega_o$。这个条件 **"微表面法线等于半程向量"** 正是反射定律在统计意义上的体现。
 
 #### 2. 斯涅尔定律的体现
 斯涅尔定律主要通过**菲涅尔效应**和**能量守恒**来影响BRDF。
-*   **决定菲涅尔反射率 `F`**：这是最直接的体现。菲涅尔方程描述了光线在界面上有多少能量被反射（`F`），有多少进入内部（`1-F`）。**这个方程的推导基础正是斯涅尔定律和电磁边界条件**。因此，BRDF中的菲涅尔项 `F(θ)`，无论是精确解还是Schlick近似，其物理根源都来自斯涅尔定律。
-*   **能量分配的依据**：在基于物理的渲染中，入射光的能量在反射和折射之间分配。斯涅尔定律通过菲涅尔项 `F` 决定了这个分配比例。反射部分由BRDF描述，折射部分可能被吸收（产生漫反射）或继续传播（由BTDF描述）。这确保了渲染的**能量守恒**。
-*   **定义全反射**：当光从高折射率介质射向低折射率介质且入射角大于临界角时，会发生全反射（`F=1`）。这个临界角由斯涅尔定律导出。在渲染诸如水下气泡、玻璃棱镜等场景时至关重要。
+*   **决定菲涅尔反射率 $F$**：这是最直接的体现。菲涅尔方程描述了光线在界面上有多少能量被反射（$F$），有多少进入内部（$1-F$）。**这个方程的推导基础正是斯涅尔定律和电磁边界条件**。因此，BRDF中的菲涅尔项 $F(\theta)$，无论是精确解还是Schlick近似，其物理根源都来自斯涅尔定律。
+*   **能量分配的依据**：在基于物理的渲染中，入射光的能量在反射和折射之间分配。斯涅尔定律通过菲涅尔项 $F$ 决定了这个分配比例。反射部分由BRDF描述，折射部分可能被吸收（产生漫反射）或继续传播（由BTDF描述）。这确保了渲染的**能量守恒**。
+*   **定义全反射**：当光从高折射率介质射向低折射率介质且入射角大于临界角时，会发生全反射（$F=1$）。这个临界角由斯涅尔定律导出。在渲染诸如水下气泡、玻璃棱镜等场景时至关重要。
 
 ### 三、总结：定律如何塑造BRDF
 
@@ -1913,10 +1803,12 @@ https://blog.csdn.net/libing_zeng/article/details/77600436
 2.  **斯涅尔定律** 回答了 **“有多少光被反射？有多少进入内部？”** 的问题。它定义了能量分配，是**强度权重**的核心。
 
 **在Cook-Torrance BRDF模型中的具体体现**：
-`BRDF = F(θ) * D(h) * G / (4 * (n·ω_i) * (n·ω_o))`
-*   **`F(θ)`（菲涅尔项）**：其背后的物理原理由**斯涅尔定律**主导。
-*   **`D(h)`（法线分布函数）**：其统计意义（哪些微面元能反射光）由**反射定律**约束。
-*   **`G`（几何遮蔽项）**：描述微表面间的遮挡，也依赖于由反射定律定义的几何光路。
+
+$$\text{BRDF} = \frac{F(\theta) \cdot D(h) \cdot G}{4 \cdot (n \cdot \omega_i) \cdot (n \cdot \omega_o)}$$
+
+*   **$F(\theta)$（菲涅尔项）**：其背后的物理原理由**斯涅尔定律**主导。
+*   **$D(h)$（法线分布函数）**：其统计意义（哪些微面元能反射光）由**反射定律**约束。
+*   **$G$（几何遮蔽项）**：描述微表面间的遮挡，也依赖于由反射定律定义的几何光路。
 
 因此，**反射定律和斯涅尔定律是构建物理正确BRDF模型的“宪法”**。它们不直接出现在BRDF的最终算式里，但整个算式的推导、每一项的物理意义，都建立在这两条基本定律之上。图形学中的所有基于物理的材质模型，都是对这些物理定律的数学近似和工程化实现。
 
@@ -1931,23 +1823,26 @@ https://blog.csdn.net/libing_zeng/article/details/77600436
 
 **一个直观的生活例子**：站在湖边，低头看脚下的水（接近垂直入射），你能看清水底（反射弱，透射强）。抬头看远处的湖面（接近掠射角），你看到的是天空的倒影，像镜子一样（反射极强，几乎不透射）。
 
-在BRDF模型中，菲涅尔项 `F(θ)` 就是一个**标量系数**，它告诉我们在某个特定的入射角 `θ` 下，有多少比例的光被**镜面反射**了。
+在BRDF模型中，菲涅尔项 $F(\theta)$ 就是一个**标量系数**，它告诉我们在某个特定的入射角 $\theta$ 下，有多少比例的光被**镜面反射**了。
 
 ### 二、精确理论公式
 
-精确的菲涅尔方程由电磁学（麦克斯韦方程组）推导而来，描述了电场在界面上的行为。对于**非偏振光**（图形学中通常的假设），其反射率 `R` 是平行偏振分量 `R_s` 和垂直偏振分量 `R_p` 的平均值：
+精确的菲涅尔方程由电磁学（麦克斯韦方程组）推导而来，描述了电场在界面上的行为。对于**非偏振光**（图形学中通常的假设），其反射率 $R$ 是平行偏振分量 $R_s$ 和垂直偏振分量 $R_p$ 的平均值：
 
 **菲涅尔方程（非偏振光）**：
-`F(θ_i) = (R_s + R_p) / 2`
+
+$$F(\theta_i) = \frac{R_s + R_p}{2}$$
 
 其中：
-*   `θ_i` 是入射角（光线与法线的夹角）。
-*   `η_i` 和 `η_t` 分别是入射介质和透射介质的折射率。
-*   `θ_t` 是折射角，由斯涅尔定律决定：`η_i * sin(θ_i) = η_t * sin(θ_t)`。
+*   $\theta_i$ 是入射角（光线与法线的夹角）。
+*   $\eta_i$ 和 $\eta_t$ 分别是入射介质和透射介质的折射率。
+*   $\theta_t$ 是折射角，由斯涅尔定律决定：$\eta_i \cdot \sin(\theta_i) = \eta_t \cdot \sin(\theta_t)$。
 
 两个偏振分量的计算公式为：
-`R_s = | (η_i * cos(θ_i) - η_t * cos(θ_t)) / (η_i * cos(θ_i) + η_t * cos(θ_t)) |^2`
-`R_p = | (η_i * cos(θ_t) - η_t * cos(θ_i)) / (η_i * cos(θ_t) + η_t * cos(θ_i)) |^2`
+
+$$R_s = \left| \frac{\eta_i \cdot \cos(\theta_i) - \eta_t \cdot \cos(\theta_t)}{\eta_i \cdot \cos(\theta_i) + \eta_t \cdot \cos(\theta_t)} \right|^2$$
+
+$$R_p = \left| \frac{\eta_i \cdot \cos(\theta_t) - \eta_t \cdot \cos(\theta_i)}{\eta_i \cdot \cos(\theta_t) + \eta_t \cdot \cos(\theta_i)} \right|^2$$
 
 这个公式非常精确，但计算复杂（涉及三角函数和开方），不适合实时渲染。
 
@@ -1956,19 +1851,20 @@ https://blog.csdn.net/libing_zeng/article/details/77600436
 Christophe Schlick在1994年提出了一个极其高效且足够精确的近似公式，它已成为图形学中的**事实标准**。
 
 **Schlick近似公式**：
-`F(θ) ≈ F_0 + (1 - F_0) * (1 - cosθ)^5`
+
+$$F(\theta) \approx F_0 + (1 - F_0) \cdot (1 - \cos\theta)^5$$
 
 其中：
-*   `F(θ)`：在入射角 `θ` 下的菲涅尔反射率。
-*   `F_0`：**法向入射（θ=0°）时的基础反射率**。这是该公式的核心参数，它是一个**RGB向量**，定义了材质在垂直观看时的反射颜色。对于电介质（非金属），`F_0` 是一个灰度值（约0.02-0.05）；对于导体（金属），`F_0` 是有颜色的（如金是淡黄色，铜是红色）。
-*   `cosθ`：入射角 `θ` 的余弦值，通常是视线向量 `V` 与表面法线 `N` 的点积，或半程向量 `H` 与相应向量的点积（取决于BRDF的具体形式）。
-*   `(1 - cosθ)^5`：这个五次方项优雅地模拟了反射率随角度增大而快速增长的趋势。
+*   $F(\theta)$：在入射角 $\theta$ 下的菲涅尔反射率。
+*   $F_0$：**法向入射（$\theta=0°$）时的基础反射率**。这是该公式的核心参数，它是一个**RGB向量**，定义了材质在垂直观看时的反射颜色。对于电介质（非金属），$F_0$ 是一个灰度值（约0.02-0.05）；对于导体（金属），$F_0$ 是有颜色的（如金是淡黄色，铜是红色）。
+*   $\cos\theta$：入射角 $\theta$ 的余弦值，通常是视线向量 $V$ 与表面法线 $N$ 的点积，或半程向量 $H$ 与相应向量的点积（取决于BRDF的具体形式）。
+*   $(1 - \cos\theta)^5$：这个五次方项优雅地模拟了反射率随角度增大而快速增长的趋势。
 
 ### 四、Schlick近似的意义与优势
 
 1.  **计算效率极高**：仅需一次标量乘方（5次方）和几次加减乘除，完全避免了复杂的三角函数和开方运算。
-2.  **物理上合理**：它完美地拟合了精确菲涅尔曲线的两个关键特征：在 `θ=0°` 时值为 `F_0`，在 `θ=90°` 时值为1。
-3.  **参数直观**：整个复杂的菲涅尔行为被浓缩为一个直观的参数 `F_0`，艺术家和程序员很容易理解和调整。
+2.  **物理上合理**：它完美地拟合了精确菲涅尔曲线的两个关键特征：在 $\theta=0°$ 时值为 $F_0$，在 $\theta=90°$ 时值为1。
+3.  **参数直观**：整个复杂的菲涅尔行为被浓缩为一个直观的参数 $F_0$，艺术家和程序员很容易理解和调整。
 4.  **易于扩展**：该公式可以方便地扩展到各向异性材质或复杂的光照模型中。
 
 **总结对比**：
@@ -1977,11 +1873,11 @@ Christophe Schlick在1994年提出了一个极其高效且足够精确的近似�
 | :--- | :--- | :--- |
 | **物理基础** | 基于电磁学，完全精确 | 经验拟合，高度近似 |
 | **计算成本** | 高（三角函数、开方） | **极低（乘方、加减）** |
-| **主要参数** | 入射/折射介质的折射率 (η_i, η_t) | **法向反射率 F_0** |
+| **主要参数** | 入射/折射介质的折射率 ($\eta_i, \eta_t$) | **法向反射率 $F_0$** |
 | **主要用途** | 离线渲染、光学仿真 | **实时渲染、游戏、交互式应用** |
 | **精度** | 完美 | 对图形学应用**足够精确**（误差通常<1%） |
 
-因此，在现代基于物理的渲染中，**Schlick近似是描述材质菲涅尔行为的首选方法**。它完美地平衡了物理真实感与实时性能，是PBR材质系统的基石之一。当你调整材质的“金属度”和“基础色”时，本质上就是在调整 `F_0` 这个参数。
+因此，在现代基于物理的渲染中，**Schlick近似是描述材质菲涅尔行为的首选方法**。它完美地平衡了物理真实感与实时性能，是PBR材质系统的基石之一。当你调整材质的"金属度"和"基础色"时，本质上就是在调整 $F_0$ 这个参数。
 
 
 ## BRDF理论总结
@@ -1992,7 +1888,7 @@ Christophe Schlick在1994年提出了一个极其高效且足够精确的近似�
 折射律、反射律、 菲涅尔Fresnel项的关系：
 1. 反射律决定光路方向
 2. 折射律决定能量分配
-3. 菲涅尔项是折射率导致的能量分配,是折射律的体现,具体的,在BRDF模型中，菲涅尔项 F(θ)就是一个标量系数，它告诉我们在某个特定的入射角 θ下，有多少比例的光被镜面反射了。
+3. 菲涅尔项是折射率导致的能量分配,是折射律的体现,具体的,在BRDF模型中，菲涅尔项 $F(\theta)$ 就是一个标量系数，它告诉我们在某个特定的入射角 $\theta$ 下，有多少比例的光被镜面反射了。
 
 
 BRDF是双向反射分布函数，即描述了在给定入射方向下，光线在表面上的反射方向和反射强度的分布情况。  
@@ -2016,15 +1912,15 @@ BRDF模型的发展，是一个从**经验模拟**到**物理模拟**，再到**
 这类模型旨在用简单数学公式模拟“看起来对”的效果。
 
 *   **Phong模型 (1975)**
-    *   **公式**：`L_o = k_d * (N·L) + k_s * (R·V)^n`
-    *   **解释**：将反射光分为**漫反射**（兰伯特项 `N·L`）和**镜面反射**（高光项 `(R·V)^n`）两部分。`n` 是高光指数，控制高光集中度。
+    *   **公式**：$L_o = k_d \cdot (N \cdot L) + k_s \cdot (R \cdot V)^n$
+    *   **解释**：将反射光分为**漫反射**（兰伯特项 $N \cdot L$）和**镜面反射**（高光项 $(R \cdot V)^n$）两部分。$n$ 是高光指数，控制高光集中度。
     *   **优点**：计算极其简单，是早期图形学的基石。
     *   **缺点**：非能量守恒，高光形状不真实（特别是掠射角），物理基础弱。
     *   **应用**：早期固定管线渲染，对性能要求极端苛刻的场合。
 
 *   **Blinn-Phong模型 (1977)**
-    *   **公式**：`L_o = k_d * (N·L) + k_s * (N·H)^n`
-    *   **解释**：Phong模型的改进版。用**半程向量H**（光线与视线中间向量）代替反射向量R，计算 `(N·H)` 的高光项。
+    *   **公式**：$L_o = k_d \cdot (N \cdot L) + k_s \cdot (N \cdot H)^n$
+    *   **解释**：Phong模型的改进版。用**半程向量H**（光线与视线中间向量）代替反射向量R，计算 $(N \cdot H)$ 的高光项。
     *   **优点**：比Phong计算稍快（无需计算反射向量R），高光更平滑。
     *   **缺点**：仍是非物理模型，存在与Phong类似的问题。
     *   **应用**：在Phong基础上广泛应用，是许多早期API（如OpenGL固定管线）的标准光照模型。
@@ -2033,14 +1929,14 @@ BRDF模型的发展，是一个从**经验模拟**到**物理模拟**，再到**
 这类模型认为粗糙表面由无数微观的完美镜面组成，从统计学角度描述其光学特性。**Cook-Torrance模型**是其中的代表框架。
 
 *   **Cook-Torrance模型框架**
-    *   **核心公式**：`BRDF = F * D * G / (4 * (N·V) * (N·L))`
+    *   **核心公式**：$\text{BRDF} = \frac{F \cdot D \cdot G}{4 \cdot (N \cdot V) \cdot (N \cdot L)}$
     *   **四项分解解释**：
-        1.  **菲涅尔项 `F`**：描述光线在界面反射的比例，随视角变化。常用**Schlick近似**。
-        2.  **法线分布函数 `D`**：描述微表面法线的统计分布，决定**高光的形状与锐利度**。常见变种：
+        1.  **菲涅尔项 $F$**：描述光线在界面反射的比例，随视角变化。常用**Schlick近似**。
+        2.  **法线分布函数 $D$**：描述微表面法线的统计分布，决定**高光的形状与锐利度**。常见变种：
             *   **Beckmann**：基于高斯分布，适用于各向同性表面。
             *   **GGX (Trowbridge-Reitz)**：**现代PBR标准**。具有更长的“拖尾”，能产生更柔和、更真实的高光边缘和掠射光晕。
-        3.  **几何遮蔽项 `G`**：描述微表面间因遮挡和阴影造成的能量损失（如`G`项）。确保能量守恒，防止边缘过亮。常与`D`项配对（如Smith GGX）。
-        4.  **分母 `4(N·V)(N·L)`**：从微面积到宏面积的转换因子，确保能量守恒。
+        3.  **几何遮蔽项 $G$**：描述微表面间因遮挡和阴影造成的能量损失（如 $G$ 项）。确保能量守恒，防止边缘过亮。常与 $D$ 项配对（如Smith GGX）。
+        4.  **分母 $4(N \cdot V)(N \cdot L)$**：从微面积到宏面积的转换因子，确保能量守恒。
     *   **优点**：物理正确，能量守恒，能高度真实地模拟金属、非金属等各类材质。
     *   **缺点**：计算成本较高，参数（粗糙度、金属度、折射率）对艺术家不够直观。
     *   **应用**：**现代游戏、影视级离线渲染的基石**。Unity URP/HDRP、Unreal Engine的材质系统均基于此框架。
@@ -2088,7 +1984,7 @@ BRDF模型的发展，是一个从**经验模拟**到**物理模拟**，再到**
     *   使用更复杂的**路径追踪**渲染器（如Renderman, Arnold, V-Ray）。
     *   它们同样基于微表面理论，但可能包含更精确的光线采样、次表面散射、涂层等扩展模型。
 4.  **特殊需求**：
-    *   **各向异性材质**：在PBR框架中使用专门的各向异性`D`项（如Anisotropic GGX）。
+    *   **各向异性材质**：在PBR框架中使用专门的各向异性 $D$ 项（如Anisotropic GGX）。
     *   **布料、毛发等**：使用专为这类材质设计的**BSSRDF**或专用模型（如Marschner毛发模型）。
 
 **核心结论**：**基于微表面理论的Cook-Torrance模型（尤其是GGX变种）配合Disney原则性参数化，已成为计算机图形学中描述表面反射的工业标准。** 它成功地在物理真实性、计算效率与艺术可控性之间取得了最佳平衡。
