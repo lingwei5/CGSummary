@@ -2517,6 +2517,52 @@ glGetProgramPipelineiv(pipeline, GL_VERTEX_SHADER, &curVS);   // 查某 stage �
 | **subroutine 选择** | ✗ | — | program（且分 stage）私有状态 |
 | **跨 stage 接口匹配信息** | 仅 pipeline 内 | separable program + 显式 location | pipeline 保证了挂进来的各 stage program 接口兼容 |
 
+**block index / binding point / buffer 三层结构（"各自状态"的含义）：**
+
+```
+program A                          全局 context                     显存
+┌─────────────────┐
+│ block "Camera"  │──block index 0 ──┐
+│  (A 内部的编号)  │                  │
+└─────────────────┘                  ▼
+                            binding point 0  ◄── glBindBufferBase ── UBO(camera)
+┌─────────────────┐                  ▲
+│ block "Light"   │──block index 1 ──┘ (假设也指到 0，则读到同一 UBO)
+└─────────────────┘
+```
+
+| 概念 | 归属 | 是什么 |
+|------|------|--------|
+| **block index** | 每个 program 私有 | block 在**这个 program 内部**的编号（`glGetUniformBlockIndex` 返回值），由声明顺序/驱动决定，跨 program 无意义。A 的 Camera 是 0，B 的 Camera 可能是 2 |
+| **binding point**（绑定槽） | **全局**（context 级） | `GL_UNIFORM_BUFFER` 的第 N 号插槽，所有 program 共用的"插座" |
+| **buffer ↔ 插座 的连接** | 全局 | `glBindBufferBase(GL_UNIFORM_BUFFER, N, ubo)`——绑一次全 program 生效，这就是"数据全局共享" |
+| **block ↔ 插座 的连接** | **每个 program 私有** | "`Camera` 这个 block 从几号插座取数据"这条**映射关系**存在 program 里 |
+
+"block↔插座"映射每个 program 各存一份，两种设置方式：
+
+```cpp
+// 方式①：GLSL 里写死（GL 4.2+，推荐）——写在每个 program 自己的源码里
+layout(std140, binding = 0) uniform Camera { ... };
+
+// 方式②：C++ 逐 program 设置（运行期状态，存在 program 对象里）
+GLuint idxA = glGetUniformBlockIndex(progA, "Camera");   // A 里可能是 0
+GLuint idxB = glGetUniformBlockIndex(progB, "Camera");   // B 里可能是 2
+glUniformBlockBinding(progA, idxA, 0);                    // A 的 Camera → 插座 0
+glUniformBlockBinding(progB, idxB, 0);                    // B 的 Camera → 插座 0（要单独设！）
+```
+
+> ⚠ **典型坑**：给 A 设了 binding，以为 B 也生效——不行，B 的映射是 B 自己的状态；没设的 block **默认全指到 binding 0**（这也是为什么"只有一个 UBO 且恰好绑在 0"时侥幸能跑，多 UBO 后立刻错乱）。
+>
+> 一句话：**index 是 program 内部门牌号，binding point 是全局插座号，"门牌号→插座号"的接线表每家（program）自己一份。**
+
+
+其实就是buffer object一类的数据，不同类型的buffer object(UBO TBO SSBO等)实际是在GPU上各自分配了一大块global的显存，
+每种类型的这一块显存可以看做是一个指针数组，通过**binding point也就是数组的index**可以访问对应的显存，glBindBufferBase就可以更新指定类型 指定buffer对象 指定binding point的那部分内存
+
+上面只是分配了内存池并填充了内存的值，在program里想要访问这块内存，这时候就需要把program内部的uniform block/shader storage block变量绑定到这块显存
+而这些变量在program内是通过blockindex代替的，所以有glUniformBlockBinding/glShaderStorageBlockBinding接口来完成绑定
+
+
 **共享 UBO 的标准姿势（相机矩阵等全局数据）：**
 
 ```glsl
