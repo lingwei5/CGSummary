@@ -1625,9 +1625,154 @@ Markov chain Monte Carlo (MCMC) methods
 Gibbs采样
 
 # Chapter 14 Light Transport I:Surface Reflection
+## 14.1 
+有brdf分母的推导
 
 ## 14.4 The Light Transport Equation
 就是渲染方程,叫法不一样
+
+> 以下补充基于原书 3ed 14.4 全节内容（https://www.pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation），重点整理推导过程。完整四步推导链（渲染方程→递归 LTE→三点式→路径积分）另见下文 14.6。
+
+### 14.4.0 原书小节结构
+
+| 小节 | 内容 | 核心结果 |
+|------|------|---------|
+| 14.4.1 Basic Derivation | 从 BSDF 定义推出 LTE 全球面形式 | 式 14.13，$\|\cos\theta_i\|$ 的由来 |
+| 14.4.2 Delta Distribution in the Specular BSDF | 镜面/折射 BSDF 是 δ 分布，从积分中剥离 | δ 项解析处理，LTE 只留非 δ 部分 |
+| 14.4.3 The Surface Form of the LTE | $d\omega \to dA$ 换元 | 几何项 $G$（式 14.14）、三点式（式 14.15） |
+| 14.4.4 The Path Form | 递归展开成路径和 | 路径积分形式（BDPT/MLT/VCM 的地基） |
+
+### 14.4.1 基本推导（14.4.1）
+
+**出发点**：出射辐射亮度的微分来自每个入射方向贡献的叠加。对单一入射方向 $\omega_i$：
+
+$$dL_o(\mathrm{p},\omega_o) = f(\mathrm{p},\omega_o,\omega_i)\; dE_i(\mathrm{p},\omega_i)$$
+
+其中入射**辐照度**微分（入射到单位面积上的通量）：
+
+$$dE_i(\mathrm{p},\omega_i) = L_i(\mathrm{p},\omega_i)\,\|\cos\theta_i\|\, d\omega_i$$
+
+对所有入射方向积分并加上自发射，得到 LTE 的**全球面形式**（式 14.13）：
+
+$$L_o(\mathrm{p},\omega_o) = L_e(\mathrm{p},\omega_o) + \int_{S^2} f(\mathrm{p},\omega_o,\omega_i)\, L_i(\mathrm{p},\omega_i)\, \|\cos\theta_i\| \, d\omega_i$$
+
+**为什么积分域是整个球面 $S^2$ 而不是上半球、$\cos\theta_i$ 要取绝对值？**（详见下方 Q1）
+
+- pbrt 的 $f$ 是 **BSDF = BRDF + BTDF**，不只描述反射：透射光从表面另一侧射来，$\omega_i$ 与法线成钝角，$\cos\theta_i < 0$
+- 被积测度本质是**投影立体角** $d\omega_\perp = \|\cos\theta\| d\omega$——投影面积必须非负
+- 职责分离："从哪一侧来"交给 BSDF（BRDF 只在上半球非零、BTDF 只在下半球非零），"投影多大"交给 $\|\cos\theta_i\|$
+- 纯反射表面（BTDF ≡ 0）时下半球积分为零，严格退化为常见的半球形式——同一物理的两种记账方式
+
+**pbrt 的 BSDF 求值约定**（8.1 节）：法线始终翻转到与 $\omega_o$ 同侧，使 $f$ 的定义域覆盖全球面，与 14.13 配套。
+
+### 14.4.2 镜面 δ 分布的剥离（14.4.2）
+
+镜面反射/折射的 BSDF 是 δ 分布，LTE 无法对它做数值采样（δ 乘任何 pdf 都是灾难）。**推导 δ 形式**：
+
+镜面反射要求：来自镜向方向 $\omega_r$（$\omega_o$ 关于法线的镜像）的入射光全部按 Fresnel 反射率 $\rho(\omega_o)$ 反射出。即能量守恒约束：
+
+$$\int_{S^2} f(\omega_o,\omega_i)\, L_i(\omega_i)\,\|\cos\theta_i\|\,d\omega_i = \rho(\omega_o)\, L_i(\omega_r)$$
+
+要使任意 $L_i$ 成立，被积函数必须是 $\omega_i = \omega_r$ 处的 δ：
+
+$$f(\omega_o,\omega_i) = \rho(\omega_o)\,\frac{\delta_{\omega_i}(\omega_r)}{\|\cos\theta_i\|}$$
+
+（分母的 $\|\cos\theta_i\|$ 正好消掉测度里的投影因子，留下 $\rho\,\delta\,L_i$。）
+
+**折射**类似，多出 radiance 折射的 $\eta^2$ 射度守恒因子：
+
+$$f(\omega_o,\omega_i) = \tau(\omega_o)\,\frac{\delta_{\omega_i}(T(\omega_o,-\omega_i))}{\|\cos\theta_i\|}\,\frac{\eta_i^2}{\eta_t^2}$$
+
+其中 $T$ 是折射方向函数，$\eta_i/\eta_t$ 为两侧折射率。
+
+**实践处理**：Path tracing 中 δ 项不做积分——镜面反射/折射直接解析地沿镜向/折射向追踪一条光线，权重乘 $\rho$ 或 $\tau$。于是 LTE 被拆成"离散和（δ 项）+ 连续积分（非 δ 项）"两部分，后续 14.4.3/14.4.4 只处理非 δ 部分。
+
+### 14.4.3 面积形式与几何项 G（14.4.3）——$d\omega \to dA$ 换元
+
+**第一步：ray-casting 代入**。真空中 radiance 沿光线不变，故 $L_i(\mathrm{p},\omega_i)$ 就是沿 $\omega_i$ 首个命中点 $\mathrm{p}''$ 处朝 $\mathrm{p}$ 出射的 radiance：
+
+$$L_i(\mathrm{p},\omega_i) = L_o(\mathrm{p}'', \omega_i') \quad (\omega_i'\text{ 为 } \mathrm{p}''\to\mathrm{p} \text{ 方向，未被遮挡时})$$
+
+**第二步：立体角→面积 Jacobian**（详细推导见下方 Q1）：
+
+$$d\omega = \frac{\|\cos\theta''\|\, dA(\mathrm{p}'')}{r^2}$$
+
+**第三步：代回 LTE**，得到**三点式（three-point form）**（式 14.15）：
+
+$$L_o(\mathrm{p}\to\mathrm{p}_0) = L_e(\mathrm{p}\to\mathrm{p}_0) + \int_A L_e(\mathrm{p}''\to\mathrm{p})\; f(\mathrm{p}''\to\mathrm{p}\to\mathrm{p}_0)\; G(\mathrm{p}\leftrightarrow\mathrm{p}'')\, dA''$$
+
+其中**几何项**（式 14.14）：
+
+$$G(\mathrm{p}\leftrightarrow\mathrm{p}'') = \frac{\|\cos\theta\|\;\|\cos\theta''\|}{\|\mathrm{p}-\mathrm{p}''\|^2}\, V(\mathrm{p}\leftrightarrow\mathrm{p}'')$$
+
+各项来历：
+
+| 项 | 来源 |
+|---|------|
+| $L_e(\mathrm{p}''\to\mathrm{p})$ | ray-casting 代入：入射量 = 首个命中点的出射量 |
+| $\|\cos\theta''\|/r^2$ | 换元 Jacobian（$\theta''$ 取在 $\mathrm{p}''$ 端） |
+| $\|\cos\theta\|$ | 原 LTE 中 $\mathrm{p}$ 处 BSDF 的投影因子，原样保留 |
+| $V\in\{0,1\}$ | 改为对**所有**表面积分后，被遮挡点必须显式剔除（方向积分时首命中隐式保证了这一点） |
+
+**面光源采样的 pdf 换算**也出自这个 Jacobian：
+
+$$p_\omega = p_A\,\frac{r^2}{\|\cos\theta''\|}$$
+
+### 14.4.4 路径形式（14.4.4）
+
+把面积形式反复代入自身展开，得到对**路径空间**的显式积分：
+
+$$L(\mathrm{p}_0\to\mathrm{p}_1) = \sum_{k=1}^{\infty} P(\bar{\mathrm{p}}_k), \qquad P(\bar{\mathrm{p}}_k) = \underbrace{\int_{\mathcal{P}^k}\! L_e \prod_{i=1}^{k-1} f(\mathrm{p}_{i+1}\to\mathrm{p}_i\to\mathrm{p}_{i-1})\, G(\mathrm{p}_i\leftrightarrow\mathrm{p}_{i+1})}_{\text{throughput 连乘}} \; dA_1\cdots dA_k$$
+
+这是 BDPT、MLT、VCM 等整套双向方法的地基。完整展开过程见下文 14.6。
+
+### 14.4.5 两个关键问题辨析（整理自讨论）
+
+#### Q1：反射方程里是 $\cos\theta$，怎么变成了绝对值？$d\omega$ 的积分又是如何变成 $dA$ 的？
+
+**① $\cos\theta_i \to \|\cos\theta_i\|$**
+
+常见半球形式（Kajiya 原始渲染方程 / RTR）：
+
+$$L_o = L_e + \int_{\Omega} f_r\, L_i \cos\theta_i \, d\omega_i \qquad (\Omega = \text{上半球，}\cos\theta_i\geq 0\text{ 恒成立})$$
+
+pbrt 14.4.1 把积分域扩到**全球面 $S^2$** 以容纳透射（BTDF），此时 $\omega_i$ 可与法线成钝角。**物理本质**：被积测度是投影立体角 $d\omega_\perp = \|\cos\theta\|d\omega$，投影面积没有负值。绝对值不是数学修补，而是把"从哪侧来"交给 BSDF、"投影多大"交给 $|\cos\theta|$ 的职责分离。GLSL 里的 `max(dot(N,L),0)` 就是半球版；纯反射时全球面版严格退化为半球版。
+
+**② $d\omega \to dA$：立体角↔面积换元的 Jacobian**
+
+$$d\omega = \frac{\|\cos\theta''\|\, dA}{r^2}$$
+
+其中 $dA$ 是 $\mathrm{p}''$ 处的面元，$r=\|\mathrm{p}''-\mathrm{p}\|$，$\theta''$ 是 **$\mathrm{p}''$ 处法线与连线方向的夹角**。两步推导：
+
+1. **倾斜因子（透视缩短）**：从 $\mathrm{p}$ 看 $\mathrm{p}''$ 处的面元，有效截面是它投影到垂直于连线平面上的面积：$dA_\perp = \|\cos\theta''\|\,dA$（与 Lambert 定律同源）
+2. **距离因子（平方反比）**：距离 $r$ 处的垂直截面 $dA_\perp$ 对 $\mathrm{p}$ 张的立体角为 $dA_\perp/r^2$（中心投影把半径 $r$ 球面的面积归一到单位球要除以 $r^2$）
+
+Sanity check：面元正对观察点（$\theta''=0$）→ $dA/r^2$，正是平方反比定律——它不是额外引入的，而是 Jacobian 自带的；面元侧对（$\theta''=90°$）→ 0。
+
+**为什么要换元**：原式里距离衰减、两次 foreshortening、可见性全藏在 ray-casting 函数里；换元后 $G$ 把它们摆在明面上，便于（a）面光源上采样点（pdf 换算 $p_\omega = p_A r^2/\|\cos\theta''\|$），（b）进一步展开成 path space。
+
+#### Q2：$G$ 项里 $\theta_o$、$\theta_i$ 分别是谁跟谁的夹角？
+
+**下标不是"着色点的入射角/出射角"，而是沿这条边的光流视角**。以边 $\mathrm{p}'\leftrightarrow\mathrm{p}''$（光从 $\mathrm{p}''$ 流向 $\mathrm{p}'$）为例：
+
+```
+   p'' ●———————————— r ————————————● p'
+       │↖ ω_o                        │↖ ω_i
+       │  θ_o = n'' 与 ω_o 的夹角    │  θ_i = n' 与 ω_i 的夹角
+      n''（p''处法线）               n'（p'处法线）
+```
+
+- **θ_o 取在 $\mathrm{p}''$ 端（上游/发射端）**：式 14.14 定义 $L(\mathrm{p}''\to\mathrm{p}') = L_o(\mathrm{p}'',\omega_o)$，$\omega_o$ 是 $\mathrm{p}''$ 的**出射方向**（$\mathrm{p}''\to\mathrm{p}'$ 连线），$\theta_o$ 是它与 $\mathrm{p}''$ 处法线的夹角
+- **θ_i 取在 $\mathrm{p}'$ 端（下游/接收端）**：$\mathrm{p}'$ 处 BSDF 求值 $f(\mathrm{p}',\ldots,\omega_i)$ 的 $\omega_i$ 指向光源（$\mathrm{p}'\to\mathrm{p}''$ 连线），$\theta_i$ 是它与 $\mathrm{p}'$ 处法线的夹角
+- $\omega_o$ 与 $\omega_i$ 是同一条线、方向相反（$\omega_o = -\omega_i$）
+
+$$G(\mathrm{p}'\leftrightarrow\mathrm{p}'') = \frac{|\cos\theta_o|\;|\cos\theta_i|}{\|\mathrm{p}'-\mathrm{p}''\|^2}\, V$$
+
+**一句话**：发射端（上游）的角叫 θ_o，接收端（下游）的角叫 θ_i——下标描述的是光在这段上"从哪出、向哪入"，而非某个固定点的角色。这正是 pbrt 记号最易误读处。
+
+**与 Jacobian 的对应**：换元发生在 $\mathrm{p}'$ 处（把 $\mathrm{p}'$ 看到的 $d\omega$ 换成 $\mathrm{p}''$ 处的 $dA$），换元式里的 $\|\cos\theta_o\|$ 必须是 $\mathrm{p}''$ 端的角——被倾斜缩短的是 $\mathrm{p}''$ 的面元；$\mathrm{p}'$ 端的 $|\cos\theta_i|$ 是 BSDF 投影因子，原样保留。交叉验证：5.6.3 面光源采样 $p_\omega = p_A\,r^2/|\cos\theta_o|$ 中的 $\theta_o$ 也是光源面（$\mathrm{p}''$ 端）上的角——同一回事。
+
+---
 
 由基本的渲染方程![alt text](<basic rendering equation.png>)
 其中Li可以是另外一个点的Lo,即![alt text](递归输入radiance.png)
