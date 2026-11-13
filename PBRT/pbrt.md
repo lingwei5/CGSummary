@@ -551,24 +551,165 @@ Fresnel Blend![Alt text](FresnelBlend.png)
 
 ## 11.1 Volume Scattering Process
 
-1. Absorption: the reduction in radiance due to the conversion of light to another form of energy, such as heat ![Alt text](absorption.png)
-2. Emission: radiance that is added to the environment from luminous particles
-3. Scattering: radiance heading in one direction that is scattered to other directions due to collisions with particles
-   1. ![Alt text](outgoing-scatter.png)由于散射到其他方向而导致的Lo的衰减
-   2. ![Alt text](in-scattering.png)
+体积散射与表面散射的本质区别：交互不再发生在无限薄的界面上，而是**连续分布在整个空间体积中**。三个基本过程：
 
-由于absorption以及outgoing散射导致的总的radiance衰减attenuation or extinction
-![alt text](总衰减公式.png) $\sigma_t = \sigma_a + \sigma_s$
+1. **Absorption 吸收**：光被转化为其他能量形式（如热）→ radiance 减少 ![Alt text](absorption.png)
+2. **Emission 发射**：发光粒子向环境添加 radiance
+3. **Scattering 散射**：光与粒子碰撞后改变方向
+   1. **Out-scattering**：$\omega$ 方向的光被散射到其他方向 → 对 $L_o$ 是衰减 ![Alt text](outgoing-scatter.png)
+   2. **In-scattering**：其他方向的光被散射进 $\omega$ → 对 $L_o$ 是增益 ![Alt text](in-scattering.png)
 
-albedo![Alt text](albedo.png)散射相对于衰减的概率 [0 1]
+以下逐个建立公式。约定量纲：$\sigma$ 系列系数为 $\mathrm{m}^{-1}$（单位长度上的概率密度），radiance 为 $\mathrm{W\cdot m^{-2}\cdot sr^{-1}}$，phase function 为 $\mathrm{sr^{-1}}$。
 
-transmittance![Alt text](transmittance.png) 两点间的透射率 [0 1],代表穿透体积粒子的光线所占比例-->Beer-Lambert Law
-两点间的optical thickness: 透射率的指数部分![alt text](光学厚度.png)
-   
+### 11.1.1 Absorption：微分方程 → 指数剩余比例（完整推导）
 
-由于发射以及in-scattering增加的radiance
-The total added radiance per unit distance due to in-scattering is given by the source term 
+pbrt 的建模假设：**单位路径上，radiance 被吸收掉的"比例速率"由吸收系数 $\sigma_a$ 描述**——穿过微分厚度 $dt$ 时，被吸收的量正比于当前的 $L$：
+
+$$\frac{dL_o(\mathrm{p},-\omega)}{dt} = -\sigma_a(\mathrm{p},\omega)\, L_i(\mathrm{p},-\omega) \tag{11.1}$$
+
+（原书写作 $\sigma_a(\mathrm{p},\omega)$ 的一般形式；对绝大多数介质系数与方向无关，pbrt 4th ed 的 microflake 才真正利用方向相关性）
+
+**求解：穿越厚度 $t$ 后的剩余比例。**
+
+第一步，分离变量：
+
+$$\frac{dL}{L} = -\sigma_a(t)\, dt$$
+
+第二步，两边积分（左：$L(0)\to L(t)$；右：$0\to t$，$\sigma_a$ 沿光线取值）：
+
+$$\ln L(t) - \ln L(0) = -\int_0^t \sigma_a(t')\,dt'$$
+
+第三步，取指数，得通解：
+
+$$\boxed{\ \frac{L(t)}{L(0)} = \exp\!\left(-\int_0^t \sigma_a(t')\,dt'\right)\ }$$
+
+均匀介质（$\sigma_a$ 常数）退化为 $L(t)=L(0)\,e^{-\sigma_a t}$。
+
+**概率视角交叉验证**：把厚度 $t$ 均分 $n$ 层，每层吸收掉 $\sigma_a\Delta t$（$\Delta t = t/n \to 0$ 时精确成立），穿过全部层的剩余比例是"每片小吸收"的连乘：
+
+$$\frac{L(t)}{L(0)}=\lim_{n\to\infty}\left(1-\sigma_a\frac{t}{n}\right)^{n}=e^{-\sigma_a t}$$
+
+殊途同归：**连续衰减微分方程的解 = 离散小吸收连乘的极限（泊松过程的生存函数）**。这个概率视角在 11.1.7 解释 $T_r$ 与 throughput 的关系时还会回来。
+
+| 量 | 含义 | 单位 |
+|---|---|---|
+| $\sigma_a$ | 单位长度上光子被吸收的概率密度 | $\mathrm{m}^{-1}$ |
+| $e^{-\int\sigma_a dt}$ | 穿越 $t$ 后未被吸收的剩余比例（生存概率） | 无量纲 |
+
+### 11.1.2 Emission
+
+发光粒子单位长度上添加 $L_v(\mathrm{p},\omega)$。与吸收合并后的微分方程：
+
+$$\frac{dL_o(\mathrm{p},-\omega)}{dt} = -\sigma_a(\mathrm{p},\omega)\,L_i(\mathrm{p},-\omega) + L_v(\mathrm{p},\omega)$$
+
+热平衡（Kirchhoff / detailed balance）：介质与环境同温时，radiance 沿传播方向不再净变化，代入上式得 $L_v = \sigma_a L$——吸收与发射恰好抵消。这也是红外仿真中烟尘/羽流等热辐射介质建模的出发点。
+
+### 11.1.3 Scattering：Out / In 与 Source Term
+
+Out-scattering 与吸收方程同构（只换系数，$\sigma_s$ 为 scattering coefficient）：
+
+$$\frac{dL_o(\mathrm{p},-\omega)}{dt} = -\sigma_s(\mathrm{p},\omega)\, L_i(\mathrm{p},-\omega)$$
+
+In-scattering：把四面八方 $\omega'$ 的入射 radiance 以 phase function $p(\omega,\omega')$ 加权（角分布定义见 11.2），散射进 $\omega$ 方向：
+
+$$dL_o(\mathrm{p},-\omega) = \sigma_s(\mathrm{p}) \int_{S^2} p(\omega,\omega')\, L_i(\mathrm{p},\omega')\,d\omega'\;dt$$
+
+把所有让 radiance 增加的来源（发射 + in-scattering）合并为单位长度的增量，即 **source term**：
+
 ![alt text](体积散射的source项.png)
+
+$$L_s(\mathrm{p},\omega) = L_e(\mathrm{p},\omega) + \sigma_s(\mathrm{p},\omega)\int_{S^2} p(\mathrm{p},\omega,\omega')\,L_i(\mathrm{p},\omega')\,d\omega'$$
+
+### 11.1.4 Extinction
+
+吸收 + out-scattering 都让 $\omega$ 方向的 radiance 减小，合称衰减（attenuation / extinction）：
+
+![alt text](总衰减公式.png)
+
+$$\sigma_t = \sigma_a + \sigma_s$$
+
+### 11.1.5 Albedo：介质 vs 表面
+
+![Alt text](albedo.png)
+
+体积的（单次散射）albedo：
+
+$$\rho = \frac{\sigma_s}{\sigma_t}$$
+
+——**一次交互中发生的是散射（而非吸收）的概率**，$\rho\in[0,1]$。$\rho=1$：纯散射、不吸收能量的"白"介质；$\rho=0$：纯吸收的"黑"介质。
+
+与表面散射先做**结构对照**——一个体积交互被拆成三个正交的量，各自对应表面 BSDF 的一部分：
+
+| 结构对照 | 表面 | 体积 |
+|---|---|---|
+| 交互发生的位置 | 2D 界面：光到达表面**必然**交互 | 3D 体积：以 $\sigma_t$ 概率密度**随机**发生 |
+| 交互的角分布 | BSDF $f_r(\omega_i,\omega_o)$ | phase function $p(\omega,\omega')$ |
+| 交互中能量的分流 | Fresnel $F$：反射 / 透射（或吸收） | $\rho$：散射 / 吸收 |
+
+再澄清**语义差异**——"albedo"一词在两侧含义并不同：
+
+| | 表面 albedo | 体积 albedo $\rho=\sigma_s/\sigma_t$ |
+|---|---|---|
+| 定义 | **能量比**：出射通量/入射通量，由 BSDF 对半球积分（directional-hemispherical reflectance） | **概率比**：单次交互走散射分支的概率 |
+| 定义位置 | 界面整体（一次完整交互的结果） | 介质内一点（微分层面的交互分流） |
+| 是否含角分布 | 已对角分布积分完毕 | 不含——角分布归 phase function 管 |
+| 是否含多次散射 | 实测/定义中通常隐含 | 完全不含——有限厚度介质层的整体反射率还要 $\sigma_t$、$p$、厚度共同决定（Kubelka-Munk 理论） |
+
+**最准确的类比**：与 $\rho$ 角色最接近的表面量不是表面 albedo，而是**交互级的能量分流比——Fresnel 的 $F$**："这一次交互，能量走哪条分支的概率"。而表面 albedo（半球积分能量比）在体积侧的对应物是"有限厚度介质层的整体反射率"，不是 $\rho$ 本身。
+
+在路径积分中的角色：$\rho$ 是体积版辐射度级数（Neumann series）的收敛公比——$\rho<1$ 才保证多次散射的能量逐次递减，对应表面场景中 BSDF 反射率份额扮演的角色。
+
+### 11.1.6 Beam Transmittance、光学厚度及相关物理量
+
+![Alt text](transmittance.png) ![alt text](光学厚度.png)
+
+两点间透射率（beam transmittance）：
+
+$$T_r(\mathrm{p}\to\mathrm{p}') = \exp\!\left(-\int_0^d \sigma_t(t)\,dt\right) = e^{-\tau}$$
+
+两点间的**光学厚度/光学深度**（optical thickness / optical depth）就是透射率指数上那个积分：
+
+$$\tau(\mathrm{p}\to\mathrm{p}') = \int_0^d \sigma_t(t)\,dt$$
+
+$T_r\in[0,1]$，代表穿透体积粒子的光线所占比例——**Beer-Lambert 定律**。注意它就是 11.1.1 的吸收解把 $\sigma_a$ 换成 $\sigma_t$（吸收 + out-scattering 都算"离开这束光"），推导逐字复用。
+
+相关物理量总表：
+
+| 量 | 定义 | 单位 | 含义 |
+|---|---|---|---|
+| $\sigma_a,\ \sigma_s,\ \sigma_t$ | $\sigma_t=\sigma_a+\sigma_s$ | $\mathrm{m}^{-1}$ | 单位长度上吸收/散射/总衰减的概率密度 |
+| mean free path 平均自由程 | $1/\sigma_t$ | $\mathrm{m}$ | 相邻两次交互之间的平均飞行距离 |
+| $\tau$ 光学厚度 | $\int_0^d \sigma_t\,dt$ | 无量纲 | 衰减系数沿光路对距离的累积量 |
+| $T_r$ 透射率 | $e^{-\tau}$ | 无量纲 | 一束光穿越两点间**不发生任何交互**的比例 |
+| 自由程 pdf | $\sigma_t e^{-\sigma_t t}$（均匀介质） | $\mathrm{m}^{-1}$ | "下一次交互落在 $t$ 处"的概率密度 |
+
+### 11.1.7 $T_r$ 与表面路径积分里 throughput 的关系
+
+**结论：$T_r$ 不是 throughput 本身，而是体积场景中 throughput 的"逐段（per-segment）因子"——它把表面路径中隐式为 1 的那段权重显式化了。**
+
+1. **纯表面路径（真空传播）**：段上无损耗，传播因子恒为 1，throughput 只在顶点处累积：
+
+$$\beta_{\text{surface}} = \prod_{\text{顶点}} \frac{f_r(\omega_i,\omega_o)\cos\theta}{p(\omega)}$$
+
+2. **含介质的路径**：光在两点间穿越介质时，"一路零交互、直达"的那份贡献要乘 $T_r$（pbrt 第 15 章体渲染方程中，每个几何项 $G$ 里都带 $T_r$）：
+
+$$\beta_{\text{volume}} = \prod_{\text{段}} T_r \times \prod_{\text{顶点}}\frac{f_r\cos\theta\ \text{（表面）或}\ \rho\,p(\omega_i,\omega_o)\ \text{（体积）}}{\text{pdf}}$$
+
+3. 逐项对应关系：
+
+| 表面路径积分 | 体积路径中的对应 |
+|---|---|
+| 段上的隐式因子 $1$（真空不衰减） | 段上的显式因子 $e^{-\tau}$（介质衰减） |
+| 镜面透射的 Fresnel 因子（穿过界面的吞吐份额） | $T_r$：**角色最接近的类比**——穿过一段介质的吞吐份额 |
+| throughput = 全路径累计权重 | $T_r$ 只是构成它的"每段"乘积项之一 |
+
+4. **概率解释（为什么穿介质的直连要乘 $T_r$）**：$T_r$ 是自由程分布的**生存函数**（survival function）。均匀介质中交互距离的 pdf 为 $\sigma_t e^{-\sigma_t t}$——正是 pbrt 沿射线采样散射位置时反演 CDF 用的分布——其 CDF 为 $1-e^{-\sigma_t d}$，故：
+
+$$T_r(d) = 1 - F(d) = \int_d^{\infty} \sigma_t e^{-\sigma_t t}\,dt = e^{-\sigma_t d}$$
+
+即"至少飞 $d$ 远才发生交互"的概率。Next-event estimation 从介质中的着色点直连光源时，采样的就是"中途零交互"这条路径，其吞吐权重自然就是 $T_r$——与表面 NEE 中乘 $\frac{f_r\cos\theta}{p}$ 完全同构：**throughput 的每一项都是"所选事件的权重"，$T_r$ 就是"穿越介质"这个事件的权重**。
+
+5. 一句话总结：**throughput 是路径上所有事件权重的连乘。表面路径里"传播"不贡献权重（真空 $=1$）；介质路径里"传播"本身变成了事件——它的权重就是 $T_r$。**
 
 ## 11.2 Phase Function
 Just as there is a wide variety of BSDF models that describe scattering from surfaces, many phase functions have also been developed. 
@@ -1885,6 +2026,9 @@ Path Tracing 算法
 ---
 
 # Chapter 15 Light Transport II:Volume Rendering
+
+> 以下 15.1–15.3 补充基于原书 3ed 第 15 章前半部分（https://www.pbr-book.org/3ed-2018/Light_Transport_II_Volume_Rendering），重点整理公式与推导，并与 11.1、14.4 的结论互相引用。
+
 ## 15.1 The Equation of Transfer
 
 传递方程是介质吸收 发射 散射光照的理论基础
@@ -1893,12 +2037,107 @@ Path Tracing 算法
 
 第14章LTE是传递方程的简化,即1)不考虑参与介质 2)只考虑表面散射
 
+### 15.1.1 微分形式
+
+沿方向 $\omega$ 传播时，radiance 的变化率 = 衰减（吸收 + 外散射）+ 来源（发射 + 内散射）：
+
+$$\frac{dL(\mathrm{p},\omega)}{dt} = -\sigma_t(\mathrm{p},\omega)\,L(\mathrm{p},\omega) + L_s(\mathrm{p},\omega) \tag{15.1}$$
+
+其中 source 项（11.1.2 的发射 + 11.1.3 的 in-scattering 合并）：
+
+$$L_s(\mathrm{p},\omega) = \sigma_a(\mathrm{p},\omega)\,L_v(\mathrm{p},\omega) + \sigma_s(\mathrm{p},\omega) \int_{S^2} p(\mathrm{p},\omega',\omega)\,L_i(\mathrm{p},\omega')\,d\omega'$$
+
+（pbrt 原书记发射为 $L_a$，本文沿用 11.1 的 $L_v$ 记号。）这是一个**积分-微分方程**：$L$ 的微分方程里又嵌着对 $L$ 的球面积分。
+
+### 15.1.2 积分形式（求解）
+
+与 11.1.1 的吸收方程同法——一阶线性 ODE，积分因子法：指数衰减解 × source 项叠加。设从 $\mathrm{x}$ 沿 $\omega$（或其反向）到最近表面点 $\mathrm{x}'$ 的距离为 $d$，入射 radiance = 表面贡献 + 途中 source 的透射加权积分（式 15.2）：
+
+$$L_i(\mathrm{x},\omega) = T_r(\mathrm{x}\leftrightarrow\mathrm{x}')\,L_o(\mathrm{x}',-\omega) + \int_0^d T_r(\mathrm{x}\leftrightarrow\mathrm{x}_t)\,L_s(\mathrm{x}_t,\omega)\,dt$$
+
+- 第一项：$\mathrm{x}'$ 处表面散射来的 radiance，按整段总透射率衰减
+- 第二项：沿途每点 source 的贡献，各自按"该点到 $\mathrm{x}$ 的透射率"加权——**体积场景中"距离衰减"不再只是 $1/r^2$，而是 $T_r$**
+
+### 15.1.3 路径积分形式
+
+把 14.4.4 的路径积分推广到体积：路径顶点既可在表面（$dA$ 测度）也可在介质内（$dV$ 测度），throughput 里各因子按顶点/段类型替换：
+
+| 元素 | 表面路径 | 体积路径 |
+|---|---|---|
+| 顶点交互因子 | BSDF $f$ | $\rho\,p(\omega_i,\omega_o)$（albedo × phase function） |
+| 顶点测度 | $dA$ | $dV$ |
+| 段的几何项 | $\dfrac{\|\cos\theta\|\,\|\cos\theta'\|}{r^2}V$ | 按 4 种组合，见下表 |
+
+段上几何项 $G$ 的四种组合：
+
+| 段的两端 | $G$ |
+|---|---|
+| 表面 ↔ 表面 | $\dfrac{\|\cos\theta\|\,\|\cos\theta'\|}{r^2}\,V$（14 章原样，若中间有介质再乘 $T_r$） |
+| 体积 ↔ 表面 | $T_r\,\dfrac{\|\cos\theta\|}{r^2}$（少一个 cos：体积顶点没有面法线） |
+| 体积 ↔ 体积 | $T_r$（只剩透射率） |
+
+可见性 $V$ 被 $T_r$ 吸收（不可达 $\approx \tau\to\infty$）。这正是 11.1.7 结论的正式形态：**体积场景的 throughput 中，每个段自动带 $T_r$ 因子——"传播"成为被采样的对象**。
+
 ## 15.2 Sampling Volume Scattering
-相函数与介质采样
+
+相函数与介质采样。体积路径追踪需要两个新的采样原语：
+
+### 15.2.1 采样自由程（下一个交互点在哪）
+
+均匀介质中自由程分布 $p(t)=\sigma_t e^{-\sigma_t t}$（11.1.6 的表已给出），逆变换采样（式 15.7）：
+
+$$t = -\frac{\ln(1-\xi)}{\sigma_t}$$
+
+与"到最近表面的距离"取 min：表面更近则表面交互，否则在 $t$ 处发生体积交互。
+
+**非均匀介质：delta tracking（Woodcock tracking）**——异质介质中 $\sigma_t(\mathrm{x})$ 沿射线变化，解析的逆 CDF 不存在，用"虚拟碰撞"重采样：
+
+1. 取 $\sigma_{\text{maj}} = \max \sigma_t$（整个介质内上界），假装均匀介质按 $\sigma_{\text{maj}}$ 采样自由程
+2. 到点后以概率 $\sigma_t(\mathrm{x})/\sigma_{\text{maj}}$ 接受**真实碰撞**（散射或吸收），否则视为 **null collision（虚拟碰撞）**：方向不变继续飞
+3. 等效把 $\sigma_{\text{maj}}$ 拆成 $\sigma_t + \sigma_n$（$\sigma_n = \sigma_{\text{maj}} - \sigma_t$），null 碰撞密度充当"重采样"——最终得到无偏的自由程分布 $\propto \sigma_t e^{-\int \sigma_t dt}$
+
+### 15.2.2 采样 phase function
+
+HG 的逆变换采样（式 15.9）：
+
+$$\cos\theta = \frac{1+g^2 - \left(\dfrac{1-g^2}{1-g+2g\xi}\right)^2}{2g}\qquad (g=0 \text{ 时退化为 } \cos\theta = 1-2\xi)$$
+
+各向同性即均匀球面采样；tabulated phase function 按区间逆变换 + 拒绝采样。
+
 ## 15.3 Volumetric Light Transport
-VolPathIntegrator实现
-## 15.4 Sampling Subsurface Reflection Functions 
+
+VolPathIntegrator 实现。把 14 章的 path tracing 推广为"每一步先决定：介质交互还是表面交互"：
+
+```
+沿射线前进：
+  ① 采样自由程 t（15.2.1）
+  ② t < 到表面距离 → 体积交互：
+       直接光：估计 σ_s ∫p L_d dω → 采样光源方向，段上按 T_r 加权
+       以概率 ρ = σ_s/σ_t 采样 phase function 继续（散射分支）
+       否则吸收，路径终止（吸收分支）
+  ③ 否则表面交互：与 14 章相同（BSDF 采样）
+  ④ 穿越每段介质时的发射：按 ∫ σ_a L_v T_r dt 累加（解析或采样估计）
+```
+
+要点：
+
+1. **体积顶点的分流规则**：一次交互以 $\rho$ 走散射、$1-\rho$ 走吸收——11.1.5"ρ 是交互级分流比（类比 Fresnel）"的直接应用
+2. **NEE 要穿过介质**：体积顶点到光源采样点的贡献含 $\int_0^d T_r\,dt$ 型积分——异质介质没有解析解，pbrt 用附加的自由程采样（重要性采样 $\propto \sigma_t T_r$）做无偏估计
+3. **发射路径**：与发光介质相交的线段上，把 $\sigma_a L_v$（热发射）沿 $T_r$ 积分累加——红外场景中烟/羽流的自发光辐射即从这个入口进入
+
+## 15.4 Sampling Subsurface Reflection Functions
+
 SeparableBSSRDF与Tabulated BSSRDF的实现
+
+BSSRDF $S(\mathrm{p}_i,\omega_i,\mathrm{p}_o,\omega_o)$ 的蒙特卡洛采样四步（pbrt 15.4）：
+
+1. **方向**：按 Fresnel 权重采样出射方向 $\omega_o$（透射侧的角分布）
+2. **半径**：采样径向剖面 $S_r(0,r)$（查表或解析逆变换）得到 $r$
+3. **位置**：在 $\mathrm{p}_i$ 附近圆盘上按方位角均匀采点
+4. **投影与权重**：把采样点投影回实际表面得 $\mathrm{p}_o$，做 pdf 换算（圆盘 pdf ↔ 表面 pdf）与 Fresnel 修正
+
+效果：次表面散射被封装成"对 S 的直接采样"，路径追踪器照常工作——路径不会出现"表面内部"的奇怪顶点，15.5 的扩散近似只是给第 2 步提供 $S_r$ 的具体形式。
+
 ## 15.5 Subsurface Scattering Using the Diffusion Equation
 
 **11.4有两种简化方式**本章继续简化
@@ -1927,8 +2166,42 @@ Normalized Diffusion:Approximate Reflectance Profiles for Efficient Subsurface S
 ### 15.5.8 Filling the BSSRDFTable
 
 # Chapter 16 Light Transport III:Bidirectional Methods
+
+> 以下补充基于原书 3ed 第 16 章（https://www.pbr-book.org/3ed-2018/Light_Transport_III_Bidirectional_Methods）。
+
 ## 16.1 The Path-Space Measurement Equation
+
 各种光源的采样 camera的采样
+
+核心思想：**渲染 = 测量**。把相机看成与光源对称的"重要性发射器"。
+
+### 16.1.1 传感器与重要性 $W_e$
+
+传感器（相机上一个像素）测得的通量：
+
+$$Q = \int_A \int_A L_e(\mathrm{x}\to\mathrm{x}')\; W_e(\mathrm{x}'\to\mathrm{x})\; G(\mathrm{x}\leftrightarrow\mathrm{x}')\; dA(\mathrm{x}')\, dA(\mathrm{x})$$
+
+其中 $W_e$（**importance，重要性**）描述"传感器对来自哪个点/方向的 radiance 响应多大"，量纲为通量/radiance，与 $L_e$ 完全对偶：
+
+| | 光源 | 相机 |
+|---|---|---|
+| 发射的量 | radiance $L_e$ | importance $W_e$ |
+| 支撑集 | 光源表面 × 方向 | 镜头表面 × 方向（像素视锥内） |
+| 角色 | 定义进入场景的光 | 定义进入像素的度量 |
+
+### 16.1.2 路径形式的测量方程（式 16.1）
+
+把 14.4.4 的路径积分推广：路径一端"发"radiance，中段穿过场景（交互链连乘），另一端被 $W_e$"接收"。路径 $\bar{\mathrm{p}} = (\mathrm{p}_0,\ldots,\mathrm{p}_k)$，$\mathrm{p}_0$ 在光源上、$\mathrm{p}_k$ 在相机端：
+
+$$I_j = \int_{\mathcal{P}} \underbrace{L_e(\mathrm{p}_0\to\mathrm{p}_1)}_{\text{光源端}}\;\underbrace{\prod_{i=1}^{k-1} f(\mathrm{p}_{i+1}\to\mathrm{p}_i\to\mathrm{p}_{i-1})\,G(\mathrm{p}_i\leftrightarrow\mathrm{p}_{i+1})}_{\text{中段交互链（throughput）}}\;\underbrace{W_e(\mathrm{p}_{k-1}\to\mathrm{p}_k)}_{\text{相机端}}\; d\mu$$
+
+与 14 章唯一的结构性区别：**$L_e$ 与 $W_e$ 角色完全对称，路径从哪端生成都行**。14.5 末尾那句"从相机开始还是光源开始只是影响权重的细节"，在这里被写成公式——这正是 BDPT 的全部理论依据：从两端各自生长子路径、在中间连接，与从一端走到底，估计的是同一个积分。
+
+### 16.1.3 相机的 $W_e$ 与相机采样
+
+- 针孔相机：像素的 $W_e$ 只在"穿过镜头中心、方向落在该像素视锥内"的射线上非零
+- 薄透镜：还要对镜头面积积分（景深来源）
+- **camera 的采样** = 采样 $W_e$ 非零的（镜头点, 方向），核心是镜头面积 pdf ↔ 像素立体角 pdf 的换算——正是 5.6.3 / 14.4.3 的立体角↔面积 Jacobian 的又一次出场
 
 ## 16.2 Stochastic Progressive Photon Mapping
 光子映射blog:
@@ -1965,6 +2238,18 @@ With photon mapping, we can trace photons leaving the light, let them refract th
       Pass2:从相机进行传统的路径追踪（path tracing），在追踪到漫反射表面的时候，统计附近的光子信息，并根据这些信息计算出最终的辐射率(radiance)
       
 
+### 16.2.2 Progressive 半径收缩与通量修正（PPM/SPPM 核心）
+
+渐进版的关键：每个"统计点"的状态 $(r, n, \Phi, N)$ 随迭代更新，半径逐步收缩、估计逐步收敛（pbrt 16.2 的两个核心更新式）：
+
+$$r_{i+1} = r_i\,\sqrt{\frac{n_i + \alpha N_i}{n_i + N_i}}\qquad \left(\alpha\in(0,1)\ \text{控制收缩速度，典型取 } \tfrac{2}{3}\right)$$
+
+$$\Phi_{i+1} = \Phi_i + \underbrace{\lambda_e\,L_e\,f\,\alpha_{\text{path}}}_{\text{本轮落入半径内的新光子贡献}}$$
+
+（$n_i$：累计光子数；$N_i$：本轮命中数；$\Phi$：累计通量。）最终密度估计形如 $L \approx \dfrac{\Phi}{\pi r^2 \bar{N}}$，半径缩小后旧通量需按面积比修正。
+
+**SPPM** = 把这套状态挂在每个相机子路径命中点上、逐轮迭代更新，无需常驻全局光子图——内存上界变成"像素数 × 状态"，才让光子映射可渐进化。
+
 ## 16.3 Bidirectional Path Tracing
 BDPT的基本思路是：
 1，对每个像素点进行多次采样；
@@ -1973,6 +2258,22 @@ BDPT的基本思路是：
 
 可以解决无法找到光源(小光源或者间接光)而产生的白色小高光(萤火虫现象,fireflies)
 ![alt text](反向路径追踪无法找到小光源.png)
+
+### 16.3.1 策略分解与 MIS（补充公式）
+
+**按路径长度的策略分解**：边数 $E$ 的完整路径有 $E+1$ 种 $(t,s)$ 采样策略（$t$ = 相机子路径顶点数、$s$ = 光源子路径顶点数，$t+s=E+1$）——"接缝"放在哪条边都行，两极端分别是纯光子追踪（$t=1$）与带 NEE 的纯路径追踪（$s=1$）。每对子路径的所有前缀组合都能各自连成一条完整路径，这就是上面"t×s 条路径"的来源。
+
+**每种策略的路径 pdf**（面积测度，连接边用 14.4.3 的 Jacobian 换算）：
+
+$$p_{t,s}(\bar{\mathrm{p}}) = \underbrace{\prod_{\text{相机子路径}} p^{\triangleleft}(\mathrm{p}_{i+1}|\mathrm{p}_i)}_{\text{含 BSDF pdf → 面积 pdf 换算}} \times \underbrace{\prod_{\text{光源子路径}} p^{\triangleleft}(\mathrm{q}_{j+1}|\mathrm{q}_j)}_{\text{含光源 pdf → 面积 pdf 换算}}$$
+
+**MIS 权重**（balance heuristic）：
+
+$$w_{t,s}(\bar{\mathrm{p}}) = \frac{p_{t,s}(\bar{\mathrm{p}})}{\sum_{(t',s')} p_{t',s'}(\bar{\mathrm{p}})}\qquad \text{满足}\ \sum_{t,s} w_{t,s}(\bar{\mathrm{p}}) = 1$$
+
+估计器：对每条候选路径算 $\sum_{t,s} w_{t,s}\cdot \dfrac{C(\bar{\mathrm{p}})}{p_{t,s}}$——**MIS 无偏**（权重和为 1 保证期望不变），且按"谁的 pdf 大谁多出力"分配，使方差近似最优。
+
+**为什么能治小光源/fireflies**：某条路径 $C$ 与单端策略的 pdf 相差几个数量级时（如焦散 SDS 路径——纯 PT 几乎采不到），总有某个 $(t,s)$ 的 pdf 与 $C$ 匹配；MIS 自动把权重让给它。"反向路径找不到小光源"的问题，被"从光源端长出来的子路径"直接解决。
 
 ## 16.4 Metropolis Light Transport
 BDPT的 t*s条路径中,可能很多都是零贡献的,mlt进行改进
@@ -1992,7 +2293,28 @@ BDPT的 t*s条路径中,可能很多都是零贡献的,mlt进行改进
    如果<p,就拒绝这个采样点,也就是下次采样仍然使用Xi作为初始状态
 
 ### 16.4.1 Primary Sample Space MLT
+
+**核心转译**：把路径空间 $\mathcal{P}$ 的 MH 采样搬到**初级样本空间** $\mathcal{X}=[0,1)^{\infty}$：
+
+```
+u = (u₁,u₂,…) ∈ [0,1)^∞ ──(采样器确定性消费)──► 场景路径 x̄ ──► 贡献 F(x̄)
+```
+
+- 场景路径由采样器依次消费 $u$ 生成（BSDF 采样、光源选择、RR……），即存在确定性映射 $\bar{\mathrm{p}} = \mathrm{path}(u)$
+- MH 突变直接在 $u$ 空间做（各分量小扰动，或以小概率大突变重启），接受概率仍是 $\min\{1, F(u')/F(u)\}$——**完全不需要计算路径空间的 pdf**（PSS 最大的工程红利：拿现成 sampler 拼装即可）
+- 归一化因子 $b$ 用少量普通 PT 样本估计：$b \approx \frac{1}{N}\sum_i F_i$；初始样本经"燃烧期"消除 startup bias
+
+缺点：相邻样本相关性强（有效样本数 < 迭代数），突变步长难调——pbrt 用 small step / large step 两档混合。
+
 ### 16.4.2 Multiplexed MLT
+
+把 MLT 与 BDPT 杂交：突变空间仍是 PSS，但**路径生成器换成 BDPT 的全套策略**——每次突变除了扰动 $u$，还会重新选择 $(t,s)$ 连接策略：
+
+- 每条路径在所有 $(t,s)$ 策略下的 $C_{t,s}/p_{t,s}$ 预先算好（就是 16.3 的 BDPT），MH 的接受率基于各策略的贡献密度
+- 相当于"用 MCMC 选策略"：简单光路自动收敛到高效策略，困难光路（SDS 焦散、小光源）自动在策略间迁移
+- 兼得两者之长：MLT 的样本复用（困难光路高效）+ BDPT 的策略覆盖（各光路类型无死角）；代价是实现复杂度
+
+pbrt 的实验结论：MEMLT 在困难场景下显著优于纯 PSSMLT，是两种思路组合的集大成者。
 
 
 # 个人总结(相关理论的总结理解)
